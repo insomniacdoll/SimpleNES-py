@@ -9,14 +9,14 @@ import numpy as np
 from typing import Optional, List
 
 # Import our components
-from src.cpu.cpu import CPU
-from src.ppu.ppu import PPU
-from src.ppu.renderer import PictureBus, Renderer
-from src.bus.mainbus import MainBus
-from src.cartridge.cartridge import Cartridge
-from src.cartridge.mapper import Mapper
-from src.controller.controller import ControllerManager
-from src.emulator.apu import APU
+from src.simple_nes.cpu.cpu import CPU
+from src.simple_nes.ppu.ppu import PPU
+from src.simple_nes.ppu.renderer import PictureBus, Renderer
+from src.simple_nes.bus.mainbus import MainBus
+from src.simple_nes.cartridge.cartridge import Cartridge
+from src.simple_nes.cartridge.mapper import Mapper
+from src.simple_nes.controller.controller import ControllerManager
+from src.simple_nes.emulator.apu import APU
 
 # Constants
 NES_VIDEO_WIDTH = 256

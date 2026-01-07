@@ -44,9 +44,10 @@ python main.py [options] rom-file
 
 ## Project Structure
 
-- `src/cpu/`: CPU emulation logic
-- `src/ppu/`: Picture Processing Unit emulation
-- `src/bus/`: Memory bus and I/O handling
-- `src/cartridge/`: ROM loading and mapper implementations
-- `src/controller/`: Input controller handling
-- `src/emulator/`: Main emulator logic
+- `src/simple_nes/cpu/`: CPU emulation logic
+- `src/simple_nes/ppu/`: Picture Processing Unit emulation
+- `src/simple_nes/bus/`: Memory bus and I/O handling
+- `src/simple_nes/cartridge/`: ROM loading and mapper implementations
+- `src/simple_nes/controller/`: Input controller handling
+- `src/simple_nes/emulator/`: Main emulator logic
+- `tests/`: Unit and integration tests
