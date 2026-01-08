@@ -1,31 +1,31 @@
 #!/bin/bash
-# SimpleNES-py 构建脚本
-# 支持在 Windows (通过 WSL 或 Git Bash)、macOS 和 Linux 上构建可执行文件
+# SimpleNES-py Build Script
+# Supports building executable files on Windows (via WSL or Git Bash), macOS, and Linux
 
-set -e  # 遇到错误时退出
+set -e  # Exit on error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "SimpleNES-py 跨平台构建工具"
-echo "=============================="
+echo "SimpleNES-py Cross-Platform Build Tool"
+echo "======================================"
 
-# 检查 Python 是否安装
+# Check if Python is installed
 if ! command -v python3 &> /dev/null; then
-    echo "错误: 未找到 python3。请先安装 Python 3。" >&2
+    echo "Error: python3 not found. Please install Python 3 first." >&2
     exit 1
 fi
 
-# 检查是否需要安装依赖
+# Check if dependencies need to be installed
 if [ ! -f "requirements.txt" ] || [ ! "$(pip list | grep pyinstaller)" ]; then
-    echo "安装构建依赖..."
+    echo "Installing build dependencies..."
     pip3 install -r requirements.txt
     pip3 install pyinstaller
 fi
 
-# 执行构建
-echo "开始构建可执行文件..."
+# Execute build
+echo "Starting to build executable file..."
 python3 build.py
 
-echo "构建完成！"
-echo "可执行文件位于 dist/ 目录中"
+echo "Build completed!"
+echo "Executable file is located in the dist/ directory"

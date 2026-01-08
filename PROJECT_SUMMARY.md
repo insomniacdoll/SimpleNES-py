@@ -1,186 +1,186 @@
-# SimpleNES-py 项目总结
+# SimpleNES-py Project Summary
 
-## 项目概述
+## Project Overview
 
-SimpleNES-py 是一个用 Python 实现的 NES（任天堂娱乐系统）模拟器，基于原始的 SimpleNES C++ 项目。该项目旨在提供一个功能完整的 NES 模拟器，能够运行经典的 NES 游戏。
+SimpleNES-py is an NES (Nintendo Entertainment System) emulator implemented in Python, based on the original SimpleNES C++ project. This project aims to provide a fully functional NES emulator capable of running classic NES games.
 
-## 架构设计
+## Architecture Design
 
-### 核心组件
+### Core Components
 
-1. **CPU 模块 (simple_nes/cpu/cpu.py)**
-   - 实现了 Ricoh 2A03 CPU（基于 6502 处理器）
-   - 支持完整的 6502 指令集
-   - 包含寄存器、标志位和中断处理
+1. **CPU Module (simple_nes/cpu/cpu.py)**
+   - Implements Ricoh 2A03 CPU (based on 6502 processor)
+   - Supports complete 6502 instruction set
+   - Includes registers, flags, and interrupt handling
 
-2. **PPU 模块 (simple_nes/ppu/ppu.py)**
-   - 实现了 NES 的 PPU（图像处理单元，RP2C02）
-   - 处理图形渲染、扫描线和帧同步
-   - 支持精灵和背景渲染
+2. **PPU Module (simple_nes/ppu/ppu.py)**
+   - Implements NES PPU (Picture Processing Unit, RP2C02)
+   - Handles graphics rendering, scanlines, and frame synchronization
+   - Supports sprite and background rendering
 
-3. **内存总线系统 (simple_nes/bus/mainbus.py)**
-   - 实现了 CPU 内存映射
-   - 处理内存读写和 I/O 操作
-   - 管理内存镜像和外部设备通信
+3. **Memory Bus System (simple_nes/bus/mainbus.py)**
+   - Implements CPU memory mapping
+   - Handles memory read/write and I/O operations
+   - Manages memory mirroring and external device communication
 
-4. **卡带和映射器系统 (simple_nes/cartridge/)**
-   - 支持 iNES 格式 ROM 加载
-   - 实现多种常见映射器（NROM, UxROM, CNROM, MMC3, AxROM, ColorDreams, GxROM, SxROM）
-   - 处理 PRG/CHR ROM 映射和银行切换
+4. **Cartridge and Mapper System (simple_nes/cartridge/)**
+   - Supports iNES format ROM loading
+   - Implements multiple common mappers (NROM, UxROM, CNROM, MMC3, AxROM, ColorDreams, GxROM, SxROM)
+   - Handles PRG/CHR ROM mapping and bank switching
 
-5. **控制器系统 (simple_nes/controller/controller.py)**
-   - 实现 NES 控制器输入
-   - 支持键盘映射和手柄输入
-   - 处理控制器状态和序列读取
+5. **Controller System (simple_nes/controller/controller.py)**
+   - Implements NES controller input
+   - Supports keyboard mapping and gamepad input
+   - Handles controller state and sequence reading
 
-6. **音频系统 (simple_nes/apu/apu.py)**
-   - 实现 NES APU（音频处理单元）
-   - 包含两个脉冲通道、三角波通道、噪声通道和 DMC 通道
-   - 支持音效和音乐回放
+6. **Audio System (simple_nes/apu/apu.py)**
+   - Implements NES APU (Audio Processing Unit)
+   - Includes two pulse channels, triangle wave channel, noise channel, and DMC channel
+   - Supports sound effects and music playback
 
-7. **渲染系统 (simple_nes/ppu/renderer.py)**
-   - 使用 Pygame 进行图形渲染
-   - 处理 PPU 输出到屏幕的转换
-   - 支持可调节的显示比例
+7. **Rendering System (simple_nes/ppu/renderer.py)**
+   - Uses Pygame for graphics rendering
+   - Handles PPU output to screen conversion
+   - Supports adjustable display scaling
 
-### 依赖库
+### Dependencies
 
-- **Pygame**: 用于图形渲染、音频和输入处理
-- **NumPy**: 用于数值计算和缓冲区处理
-- **Pillow**: 用于图像处理（可选）
+- **Pygame**: For graphics rendering, audio, and input processing
+- **NumPy**: For numerical calculations and buffer processing
+- **Pillow**: For image processing (optional)
 
-## 文件结构
+## File Structure
 
 ```
 SimpleNES-py/
-├── main.py                 # 主程序入口
-├── requirements.txt        # Python 依赖
-├── pyproject.toml         # 项目配置文件
-├── README.md              # 项目说明
-├── PROJECT_SUMMARY.md     # 项目总结文档
-├── BUILDING.md            # 构建说明文档
-├── run.sh                 # 运行脚本
-├── build.py               # 构建脚本
-├── build_executable.py    # 备用构建脚本
-├── build.sh               # Unix 构建脚本
-├── simple_nes/            # 主要源代码包
+├── main.py                 # Main program entry point
+├── requirements.txt        # Python dependencies
+├── pyproject.toml         # Project configuration file
+├── README.md              # Project description
+├── PROJECT_SUMMARY.md     # Project summary documentation
+├── BUILDING.md            # Build documentation
+├── run.sh                 # Run script
+├── build.py               # Build script
+├── build_executable.py    # Alternative build script
+├── build.sh               # Unix build script
+├── simple_nes/            # Main source code package
 │   ├── __init__.py
-│   ├── apu/               # 音频处理单元
+│   ├── apu/               # Audio Processing Unit
 │   │   ├── __init__.py
-│   │   ├── apu.py         # APU 模拟器
-│   ├── bus/               # 内存总线系统
+│   │   ├── apu.py         # APU emulator
+│   ├── bus/               # Memory bus system
 │   │   ├── __init__.py
-│   │   └── mainbus.py     # 内存总线实现
-│   ├── cartridge/         # 卡带系统
+│   │   └── mainbus.py     # Memory bus implementation
+│   ├── cartridge/         # Cartridge system
 │   │   ├── __init__.py
-│   │   ├── cartridge.py   # 卡带加载
-│   │   └── mapper.py      # 映射器实现
-│   ├── controller/        # 控制器系统
+│   │   ├── cartridge.py   # Cartridge loading
+│   │   └── mapper.py      # Mapper implementation
+│   ├── controller/        # Controller system
 │   │   ├── __init__.py
-│   │   └── controller.py  # 控制器实现
-│   ├── cpu/               # CPU 系统
+│   │   └── controller.py  # Controller implementation
+│   ├── cpu/               # CPU system
 │   │   ├── __init__.py
-│   │   └── cpu.py         # CPU 模拟器
-│   ├── emulator/          # 模拟器核心
+│   │   └── cpu.py         # CPU emulator
+│   ├── emulator/          # Emulator core
 │   │   ├── __init__.py
-│   │   ├── emulator.py    # 主模拟器循环
-│   │   └── apu.py         # 音频处理单元
-│   └── ppu/               # 图像处理单元
+│   │   ├── emulator.py    # Main emulator loop
+│   │   └── apu.py         # Audio Processing Unit
+│   └── ppu/               # Picture Processing Unit
 │       ├── __init__.py
-│       ├── ppu.py         # PPU 模拟器
-│       └── renderer.py    # 渲染系统
-├── tests/                 # 测试文件目录
+│       ├── ppu.py         # PPU emulator
+│       └── renderer.py    # Rendering system
+├── tests/                 # Test files directory
 │   ├── __init__.py
-│   └── unit/              # 单元测试
+│   └── unit/              # Unit tests
 │       ├── __init__.py
 │       ├── test_basic_imports_mocked.py
 │       ├── test_basic_imports.py
 │       ├── test_components.py
 │       ├── test_integration.py
 │       └── test_module_functionality.py
-├── venv/                  # Python 虚拟环境
+├── venv/                  # Python virtual environment
 └── __init__.py
 ```
 
-## 使用方法
+## Usage
 
-### 安装依赖
+### Install Dependencies
 
 ```bash
-# 创建并激活虚拟环境
+# Create and activate virtual environment
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
-# 或
+# or
 venv\Scripts\activate     # Windows
 
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 运行模拟器
+### Run Emulator
 
 ```bash
-# 激活虚拟环境
+# Activate virtual environment
 source venv/bin/activate
 
-# 运行模拟器
+# Run emulator
 python main.py [options] <rom_path>
 
-# 示例
+# Example
 python main.py -s 3 SuperMarioBros.nes
 ```
 
-### 命令行选项
+### Command Line Options
 
-- `-h, --help`: 显示帮助信息
-- `-s, --scale`: 设置显示比例（默认：3）
-- `-w, --width`: 设置窗口宽度
-- `-H, --height`: 设置窗口高度
+- `-h, --help`: Show help information
+- `-s, --scale`: Set display scale (default: 3)
+- `-w, --width`: Set window width
+- `-H, --height`: Set window height
 
-### 默认控制键
+### Default Controls
 
-**玩家 1**
+**Player 1**
 - A: J
 - B: K
-- Select: 右 Shift
-- Start: 回车
-- 上: W
-- 下: S
-- 左: A
-- 右: D
+- Select: Right Shift
+- Start: Enter
+- Up: W
+- Down: S
+- Left: A
+- Right: D
 
-**玩家 2**
-- A: 小键盘 5
-- B: 小键盘 6
-- Select: 小键盘 8
-- Start: 小键盘 9
-- 上: 上箭头
-- 下: 下箭头
-- 左: 左箭头
-- 右: 右箭头
+**Player 2**
+- A: Numpad 5
+- B: Numpad 6
+- Select: Numpad 8
+- Start: Numpad 9
+- Up: Up Arrow
+- Down: Down Arrow
+- Left: Left Arrow
+- Right: Right Arrow
 
-## 实现特性
+## Implementation Features
 
-- **CPU 模拟**: 支持 6502 指令集的大部分指令
-- **图形渲染**: 基本的 PPU 功能，支持背景和精灵渲染
-- **音频处理**: 实现完整的 APU，包括所有声音通道
-- **ROM 支持**: 支持 iNES 格式 ROM，兼容多种映射器
-- **输入处理**: 键盘控制，支持双玩家
-- **可扩展性**: 模块化设计，易于添加新功能
+- **CPU Simulation**: Supports most of 6502 instruction set
+- **Graphics Rendering**: Basic PPU functionality, supports background and sprite rendering
+- **Audio Processing**: Implements complete APU, including all sound channels
+- **ROM Support**: Supports iNES format ROM, compatible with multiple mappers
+- **Input Processing**: Keyboard controls, supports two players
+- **Extensibility**: Modular design, easy to add new features
 
-## 当前状态
+## Current Status
 
-SimpleNES-py 已经实现了 NES 模拟器的核心功能，包括 CPU、PPU、内存系统、卡带映射器、控制器和音频系统。虽然还不能运行所有 NES 游戏（因为一些高级功能仍在开发中），但已构建了一个完整的框架，可以继续扩展和完善。
+SimpleNES-py has implemented the core functionality of an NES emulator, including CPU, PPU, memory system, cartridge mappers, controllers, and audio system. While it cannot yet run all NES games (as some advanced features are still under development), it has built a complete framework that can be extended and improved.
 
-## 后续开发建议
+## Future Development Suggestions
 
-1. **完善 CPU 指令**: 实现所有 6502 指令及精确的时序
-2. **增强 PPU**: 实现完整的精灵 0 碰撞检测、掩码控制等
-3. **优化性能**: 使用 NumPy 优化渲染和音频处理
-4. **添加调试工具**: 内存查看器、CPU 跟踪等功能
-5. **支持更多映射器**: 实现更复杂的映射器类型
-6. **保存状态**: 实现游戏存档和回放功能
+1. **Complete CPU Instructions**: Implement all 6502 instructions and precise timing
+2. **Enhance PPU**: Implement full sprite 0 collision detection, mask controls, etc.
+3. **Optimize Performance**: Use NumPy to optimize rendering and audio processing
+4. **Add Debugging Tools**: Memory viewer, CPU trace, and other functionality
+5. **Support More Mappers**: Implement more complex mapper types
+6. **Save States**: Implement game save and replay functionality
 
-## 许可证
+## License
 
-该项目基于原始 SimpleNES 项目的许可证，具体请查看 LICENSE 文件。
+This project is based on the original SimpleNES project's license. See the LICENSE file for details.
