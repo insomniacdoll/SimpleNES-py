@@ -8,37 +8,37 @@ SimpleNES-py 是一个用 Python 实现的 NES（任天堂娱乐系统）模拟�
 
 ### 核心组件
 
-1. **CPU 模块 (src/cpu/cpu.py)**
+1. **CPU 模块 (simple_nes/cpu/cpu.py)**
    - 实现了 Ricoh 2A03 CPU（基于 6502 处理器）
    - 支持完整的 6502 指令集
    - 包含寄存器、标志位和中断处理
 
-2. **PPU 模块 (src/ppu/ppu.py)**
+2. **PPU 模块 (simple_nes/ppu/ppu.py)**
    - 实现了 NES 的 PPU（图像处理单元，RP2C02）
    - 处理图形渲染、扫描线和帧同步
    - 支持精灵和背景渲染
 
-3. **内存总线系统 (src/bus/mainbus.py)**
+3. **内存总线系统 (simple_nes/bus/mainbus.py)**
    - 实现了 CPU 内存映射
    - 处理内存读写和 I/O 操作
    - 管理内存镜像和外部设备通信
 
-4. **卡带和映射器系统 (src/cartridge/)**
+4. **卡带和映射器系统 (simple_nes/cartridge/)**
    - 支持 iNES 格式 ROM 加载
    - 实现多种常见映射器（NROM, UxROM, CNROM, MMC3, AxROM, ColorDreams, GxROM, SxROM）
    - 处理 PRG/CHR ROM 映射和银行切换
 
-5. **控制器系统 (src/controller/controller.py)**
+5. **控制器系统 (simple_nes/controller/controller.py)**
    - 实现 NES 控制器输入
    - 支持键盘映射和手柄输入
    - 处理控制器状态和序列读取
 
-6. **音频系统 (src/emulator/apu.py)**
+6. **音频系统 (simple_nes/apu/apu.py)**
    - 实现 NES APU（音频处理单元）
    - 包含两个脉冲通道、三角波通道、噪声通道和 DMC 通道
    - 支持音效和音乐回放
 
-7. **渲染系统 (src/ppu/renderer.py)**
+7. **渲染系统 (simple_nes/ppu/renderer.py)**
    - 使用 Pygame 进行图形渲染
    - 处理 PPU 输出到屏幕的转换
    - 支持可调节的显示比例
@@ -55,31 +55,49 @@ SimpleNES-py 是一个用 Python 实现的 NES（任天堂娱乐系统）模拟�
 SimpleNES-py/
 ├── main.py                 # 主程序入口
 ├── requirements.txt        # Python 依赖
+├── pyproject.toml         # 项目配置文件
 ├── README.md              # 项目说明
-├── test_components.py     # 组件测试
-├── src/
+├── PROJECT_SUMMARY.md     # 项目总结文档
+├── BUILDING.md            # 构建说明文档
+├── run.sh                 # 运行脚本
+├── build.py               # 构建脚本
+├── build_executable.py    # 备用构建脚本
+├── build.sh               # Unix 构建脚本
+├── simple_nes/            # 主要源代码包
 │   ├── __init__.py
-│   ├── cpu/
+│   ├── apu/               # 音频处理单元
 │   │   ├── __init__.py
-│   │   └── cpu.py         # CPU 模拟器
-│   ├── ppu/
+│   │   ├── apu.py         # APU 模拟器
+│   ├── bus/               # 内存总线系统
 │   │   ├── __init__.py
-│   │   ├── ppu.py         # PPU 模拟器
-│   │   └── renderer.py    # 渲染系统
-│   ├── bus/
-│   │   ├── __init__.py
-│   │   └── mainbus.py     # 内存总线系统
-│   ├── cartridge/
+│   │   └── mainbus.py     # 内存总线实现
+│   ├── cartridge/         # 卡带系统
 │   │   ├── __init__.py
 │   │   ├── cartridge.py   # 卡带加载
 │   │   └── mapper.py      # 映射器实现
-│   ├── controller/
+│   ├── controller/        # 控制器系统
 │   │   ├── __init__.py
-│   │   └── controller.py  # 控制器系统
-│   └── emulator/
+│   │   └── controller.py  # 控制器实现
+│   ├── cpu/               # CPU 系统
+│   │   ├── __init__.py
+│   │   └── cpu.py         # CPU 模拟器
+│   ├── emulator/          # 模拟器核心
+│   │   ├── __init__.py
+│   │   ├── emulator.py    # 主模拟器循环
+│   │   └── apu.py         # 音频处理单元
+│   └── ppu/               # 图像处理单元
 │       ├── __init__.py
-│       ├── emulator.py    # 主模拟器循环
-│       └── apu.py         # 音频处理单元
+│       ├── ppu.py         # PPU 模拟器
+│       └── renderer.py    # 渲染系统
+├── tests/                 # 测试文件目录
+│   ├── __init__.py
+│   └── unit/              # 单元测试
+│       ├── __init__.py
+│       ├── test_basic_imports_mocked.py
+│       ├── test_basic_imports.py
+│       ├── test_components.py
+│       ├── test_integration.py
+│       └── test_module_functionality.py
 ├── venv/                  # Python 虚拟环境
 └── __init__.py
 ```
