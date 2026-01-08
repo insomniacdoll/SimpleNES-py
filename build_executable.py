@@ -66,8 +66,15 @@ a = Analysis(
         'simple_nes.emulator',
         'simple_nes.ppu',
         'simple_nes.apu',
+        # Add pygame and related modules explicitly
+        'pygame',
+        'pygame.version',
+        'pygame.sdl2_video',
+        'numpy',
+        'PIL',
+        'PIL.Image',
     ],
-    hookspath=[],
+    hookspath=['./'],  # Look for hooks in current directory
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
