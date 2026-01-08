@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.scripts]
-simple-nes = "src.simple_nes.emulator.emulator:main"
+simple-nes = "simple_nes.emulator.emulator:main"
 simple-nes-build = "build_executable:main"
 
 [project.optional-dependencies]
@@ -46,12 +46,6 @@ build = [
 Homepage = "https://github.com/insomniacdoll/SimpleNES-py"
 Repository = "https://github.com/insomniacdoll/SimpleNES-py"
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=6.0",
-    "pytest-cov",
-]
-
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 include = ["simple_nes*"]

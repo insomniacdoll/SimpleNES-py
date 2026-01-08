@@ -4,7 +4,7 @@ Handles converting PPU output to Pygame display
 """
 import pygame
 import numpy as np
-from src.simple_nes.ppu.ppu import PPU
+from simple_nes.ppu.ppu import PPU
 from ..bus.mainbus import MainBus
 from ..cartridge.mapper import Mapper
 

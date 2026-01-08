@@ -59,16 +59,17 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('src', 'src'),  # Include source code directory
+        ('simple_nes', 'simple_nes'),  # Include source code directory
     ],
     hiddenimports=[
-        'src.simple_nes',
-        'src.simple_nes.bus',
-        'src.simple_nes.cartridge', 
-        'src.simple_nes.controller',
-        'src.simple_nes.cpu',
-        'src.simple_nes.emulator',
-        'src.simple_nes.ppu',
+        'simple_nes',
+        'simple_nes.bus',
+        'simple_nes.cartridge', 
+        'simple_nes.controller',
+        'simple_nes.cpu',
+        'simple_nes.emulator',
+        'simple_nes.ppu',
+        'simple_nes.apu',
     ],
     hookspath=[],
     hooksconfig={},

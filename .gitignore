@@ -1,11 +1,4 @@
-config.ini
-config.yaml
-.karma_history
-.karma_ex_history
 .vscode
-test*.py
-test/
-temp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

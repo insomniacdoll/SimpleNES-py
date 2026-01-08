@@ -7,7 +7,7 @@ NES emulator written in Python
 import sys
 import os
 import argparse
-from src.simple_nes.emulator.emulator import Emulator
+from simple_nes.emulator.emulator import Emulator
 
 def parse_arguments():
     """Parse command line arguments"""
