@@ -8,8 +8,13 @@ from typing import Callable
 
 class APU:
     def __init__(self):
-        # Initialize pygame mixer for audio output
-        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+        # Check if pygame mixer module is available
+        self.mixer_available = hasattr(pygame, 'mixer')
+        if self.mixer_available:
+            try:
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            except (NotImplementedError, ModuleNotFoundError):
+                self.mixer_available = False
         
         # APU channels
         self.pulse1 = PulseChannel(0)  # $4000-$4003
@@ -30,8 +35,11 @@ class APU:
         self.sample_rate = 44100
         self.audio_buffer = []
         
-        # Setup mixer channel for audio output
-        self.audio_channel = pygame.mixer.Channel(0)
+        # Setup mixer channel for audio output if available
+        if self.mixer_available:
+            self.audio_channel = pygame.mixer.Channel(0)
+        else:
+            self.audio_channel = None
     
     def write_register(self, addr: int, value: int):
         """Write to APU register"""
@@ -128,8 +136,22 @@ class APU:
     def generate_audio(self):
         """Generate audio samples for playback"""
         # This would generate audio based on the state of all channels
-        # For simplicity, we'll just return a placeholder
+        # For now, we'll just return a placeholder
+        # In a real implementation, we would mix all channels and output to pygame mixer
         pass
+    
+    def play_sample(self, sample_data):
+        """Play audio sample if mixer is available"""
+        if self.mixer_available and self.audio_channel:
+            # Convert sample data to a pygame sound object and play it
+            # For now, we just skip if mixer is not available
+            try:
+                sound = pygame.sndarray.make_sound(sample_data)
+                self.audio_channel.play(sound)
+            except:
+                # If there's an error playing the sound, ignore it
+                pass
+        # If mixer is not available, just ignore the audio
 
 class PulseChannel:
     def __init__(self, channel_num: int):
