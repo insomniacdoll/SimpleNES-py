@@ -289,6 +289,245 @@ class CPU:
             self.set_flags_ZN(self.r_A)
             cycles = 3
         
+        elif opcode == 0x9A:  # TXS - Transfer X to Stack Pointer
+            self.r_SP = self.r_X
+            cycles = 2
+        
+        elif opcode == 0x0A:  # ASL - Arithmetic Shift Left Accumulator
+            # Shift accumulator left, shifting bit 7 to carry flag
+            self.f_C = (self.r_A & 0x80) != 0  # Set carry to bit 7
+            self.r_A = Byte((self.r_A << 1) & 0xFF)
+            self.set_flags_ZN(self.r_A)
+            cycles = 2
+        
+        elif opcode == 0x10:  # BPL - Branch if Plus (Negative flag clear)
+            offset = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            if not self.f_N:  # If negative flag is clear, branch
+                # Calculate target address with sign extension
+                if offset & 0x80:  # If offset is negative (signed)
+                    # Convert to signed 8-bit (-128 to 127) then add to PC
+                    signed_offset = offset - 0x100  # Convert unsigned byte to signed value
+                    target = Address((int(self.r_PC) + signed_offset) & 0xFFFF)
+                else:
+                    target = Address((int(self.r_PC) + offset) & 0xFFFF)
+                # Page boundary check: extra cycle if crossing page boundary
+                if (self.r_PC & 0xFF00) != (target & 0xFF00):
+                    cycles = 4  # Extra cycle for page crossing
+                else:
+                    cycles = 3  # Base cycles
+                self.r_PC = target
+            else:
+                cycles = 2  # 2 cycles if branch not taken
+        
+        elif opcode == 0xB0:  # BCS - Branch if Carry Set
+            offset = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            if self.f_C:  # If carry flag is set, branch
+                # Calculate target address with sign extension
+                if offset & 0x80:  # If offset is negative (signed)
+                    # Convert to signed 8-bit (-128 to 127) then add to PC
+                    signed_offset = offset - 0x100  # Convert unsigned byte to signed value
+                    target = Address((int(self.r_PC) + signed_offset) & 0xFFFF)
+                else:
+                    target = Address((int(self.r_PC) + offset) & 0xFFFF)
+                # Page boundary check: extra cycle if crossing page boundary
+                if (self.r_PC & 0xFF00) != (target & 0xFF00):
+                    cycles = 4  # Extra cycle for page crossing
+                else:
+                    cycles = 3  # Base cycles
+                self.r_PC = target
+            else:
+                cycles = 2  # 2 cycles if branch not taken
+        
+        elif opcode == 0xD0:  # BNE - Branch if Not Equal (Zero flag clear)
+            offset = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            if not self.f_Z:  # If zero flag is clear, branch
+                # Calculate target address with sign extension
+                if offset & 0x80:  # If offset is negative (signed)
+                    # Convert to signed 8-bit (-128 to 127) then add to PC
+                    signed_offset = offset - 0x100  # Convert unsigned byte to signed value
+                    target = Address((int(self.r_PC) + signed_offset) & 0xFFFF)
+                else:
+                    target = Address((int(self.r_PC) + offset) & 0xFFFF)
+                # Page boundary check: extra cycle if crossing page boundary
+                if (self.r_PC & 0xFF00) != (target & 0xFF00):
+                    cycles = 4  # Extra cycle for page crossing
+                else:
+                    cycles = 3  # Base cycles
+                self.r_PC = target
+            else:
+                cycles = 2  # 2 cycles if branch not taken
+        
+        elif opcode == 0x20:  # JSR - Jump to Subroutine
+            # Get the target address (2 bytes)
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            target = Address((hi << 8) | lo)
+            
+            # Push return address (PC-1) onto the stack (JSR's last byte address)
+            # When RTS executes, it will pull this address and increment it by 1
+            return_addr = self.r_PC - 1  # Address of the last byte of JSR instruction
+            self.push_stack(Byte((return_addr >> 8) & 0xFF))  # Push high byte as Byte
+            self.push_stack(Byte(return_addr & 0xFF))        # Push low byte as Byte
+            
+            # Jump to target address
+            self.r_PC = target
+            cycles = 6  # JSR takes 6 cycles
+        
+        elif opcode == 0xCC:  # CPY - Compare Y Register Absolute
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            addr = Address((hi << 8) | lo)
+            value = self.memory.read(addr)
+            
+            result = int(self.r_Y) - int(value)
+            self.f_C = result >= 0  # Set carry if Y >= value
+            self.set_flags_ZN(Byte(result & 0xFF))
+            cycles = 4  # 4 cycles for absolute addressing
+        
+        elif opcode == 0x90:  # BCC - Branch if Carry Clear
+            offset = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            if not self.f_C:  # If carry flag is clear, branch
+                # Calculate target address with sign extension
+                if offset & 0x80:  # If offset is negative (signed)
+                    # Convert to signed 8-bit (-128 to 127) then add to PC
+                    signed_offset = offset - 0x100  # Convert unsigned byte to signed value
+                    target = Address((int(self.r_PC) + signed_offset) & 0xFFFF)
+                else:
+                    target = Address((int(self.r_PC) + offset) & 0xFFFF)
+                # Page boundary check: extra cycle if crossing page boundary
+                if (self.r_PC & 0xFF00) != (target & 0xFF00):
+                    cycles = 4  # Extra cycle for page crossing
+                else:
+                    cycles = 3  # Base cycles
+                self.r_PC = target
+            else:
+                cycles = 2  # 2 cycles if branch not taken
+        
+        elif opcode == 0x8E:  # STX - Store X Absolute
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            addr = Address((hi << 8) | lo)
+            self.memory.write(addr, self.r_X)
+            cycles = 4  # 4 cycles for absolute addressing
+        
+        elif opcode == 0xEE:  # INC - Increment Memory Absolute
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            addr = Address((hi << 8) | lo)
+            value = self.memory.read(addr)
+            result = Byte((value + 1) & 0xFF)
+            self.memory.write(addr, result)
+            self.set_flags_ZN(result)
+            cycles = 6  # 6 cycles for absolute addressing with read-modify-write
+        
+        elif opcode == 0xF6:  # INC - Increment Memory Zero Page, X
+            zp_addr = (self.memory.read(self.r_PC) + self.r_X) & 0xFF
+            self.r_PC = Address(self.r_PC + 1)
+            value = self.memory.read(zp_addr)
+            result = Byte((value + 1) & 0xFF)
+            self.memory.write(zp_addr, result)
+            self.set_flags_ZN(result)
+            cycles = 6  # 6 cycles for zero page, X addressing with read-modify-write
+        
+        elif opcode == 0x19:  # SBC - Subtract with Carry Absolute, Y
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            addr = Address((hi << 8) | lo)
+            addr_with_y = Address(addr + self.r_Y)
+            
+            value = self.memory.read(addr_with_y)
+            # Check for page boundary crossing
+            if (addr & 0xFF00) != (addr_with_y & 0xFF00):
+                cycles = 5  # Extra cycle for page crossing (not counting the base cycles)
+            else:
+                cycles = 4  # Base cycles for absolute,Y addressing
+            
+            # SBC: A - M - (1 - C), following C++ implementation
+            # High carry means "no borrow", thus negate and subtract
+            diff = int(self.r_A) - int(value) - (1 - int(self.f_C))
+            # if the ninth bit is 1, the resulting number is negative => borrow => low carry
+            self.f_C = not bool(diff & 0x100)
+            # Same as ADC, except instead of the subtrahend, substitute with it's one complement
+            # Calculate overflow: (A^result) & (M^result) & 0x80 (for SBC it's (A^result) & (~M^result) & 0x80)
+            # To avoid issues with Python's ~ operator with negative numbers, use 0xFF ^ value instead
+            self.f_V = ((int(self.r_A) ^ diff) & ((0xFF ^ int(value)) ^ diff) & 0x80) != 0
+            self.r_A = Byte(diff & 0xFF)
+            self.set_flags_ZN(self.r_A)
+        
+        elif opcode == 0xED:  # SBC - Subtract with Carry Absolute
+            lo = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            hi = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            addr = Address((hi << 8) | lo)
+            value = self.memory.read(addr)
+            
+            # SBC: A - M - (1 - C), following C++ implementation
+            # High carry means "no borrow", thus negate and subtract
+            diff = int(self.r_A) - int(value) - (1 - int(self.f_C))
+            # if the ninth bit is 1, the resulting number is negative => borrow => low carry
+            self.f_C = not bool(diff & 0x100)
+            # Same as ADC, except instead of the subtrahend, substitute with it's one complement
+            # Calculate overflow: (A^result) & (M^result) & 0x80 (for SBC it's (A^result) & (~M^result) & 0x80)
+            # To avoid issues with Python's ~ operator with negative numbers, use 0xFF ^ value instead
+            self.f_V = ((int(self.r_A) ^ diff) & ((0xFF ^ int(value)) ^ diff) & 0x80) != 0
+            self.r_A = Byte(diff & 0xFF)  # Convert to unsigned 8-bit
+            self.set_flags_ZN(self.r_A)
+            cycles = 4  # 4 cycles for absolute addressing
+        
+        # Illegal opcodes implementations
+        elif opcode == 0xFB:  # SBC - Illegal opcode (SBC immediate with 3 bytes)
+            # Skip the immediate value (2 bytes)
+            self.r_PC = Address(self.r_PC + 2)
+            # Perform SBC with dummy value - similar to how illegal opcodes behave
+            cycles = 2
+        
+        elif opcode == 0x0C:  # NOP - Illegal opcode (NOP with absolute addressing)
+            # Skip 2 bytes of addressing
+            self.r_PC = Address(self.r_PC + 2)
+            cycles = 4  # Takes 4 cycles like absolute addressing
+        
+        elif opcode == 0x02 or opcode == 0x82 or opcode == 0x80:  # JAM - Illegal opcodes that lock up CPU
+            # In real 6502, these would lock up the CPU, but for simulation we'll just advance PC
+            self.r_PC = Address(self.r_PC + 1)
+            cycles = 2
+        
+        elif opcode == 0x74:  # NOP - Illegal opcode (NOP with zero page,X addressing)
+            # Skip 1 byte of addressing
+            self.r_PC = Address(self.r_PC + 1)
+            cycles = 4  # Takes 4 cycles like zero page,X addressing
+        
+        elif opcode == 0x07:  # SLO - Illegal opcode (Shift Left and OR)
+            # Skip 1 byte of addressing (zero page)
+            addr = self.memory.read(self.r_PC)
+            self.r_PC = Address(self.r_PC + 1)
+            # Read, shift left, store back, then OR with accumulator
+            value = self.memory.read(addr)
+            self.f_C = (value & 0x80) != 0  # Set carry to bit 7 before shift
+            result = Byte((value << 1) & 0xFF)
+            self.memory.write(addr, result)
+            self.r_A = Byte(self.r_A | result)
+            self.set_flags_ZN(self.r_A)
+            cycles = 5
+        
+        elif opcode == 0x09:  # NOP - Illegal opcode (NOP immediate)
+            # Skip 1 byte of immediate value
+            self.r_PC = Address(self.r_PC + 1)
+            cycles = 2
+        
         else:
             # For unimplemented opcodes, just advance PC and return default cycles
             # In a real implementation, we'd have to determine instruction length
@@ -298,15 +537,19 @@ class CPU:
         
         return cycles
     
-    def push_stack(self, value: Byte):
+    def push_stack(self, value):
         """Push a value onto the stack"""
-        self.memory.write(0x0100 | self.r_SP, value)
+        # Ensure the value is within uint8 range
+        value_byte = Byte(value & 0xFF)
+        # Calculate stack address, making sure to convert types properly
+        stack_addr = 0x0100 | int(self.r_SP)
+        self.memory.write(stack_addr, value_byte)
         self.r_SP = Byte(self.r_SP - 1)
     
     def pull_stack(self) -> Byte:
         """Pull a value from the stack"""
         self.r_SP = Byte(self.r_SP + 1)
-        return self.memory.read(0x0100 | self.r_SP)
+        return Byte(self.memory.read(0x0100 | self.r_SP))
     
     def set_flags_ZN(self, value: Byte):
         """Set Zero and Negative flags based on value"""
