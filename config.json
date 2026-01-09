@@ -1,0 +1,31 @@
+{
+  "logging": {
+    "level": "INFO",
+    "file_path": "simple_nes.log",
+    "console_output": true,
+    "file_output": true,
+    "format": "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+  },
+  "controller": {
+    "player1": {
+      "A": "K_j",
+      "B": "K_k",
+      "SELECT": "K_RSHIFT",
+      "START": "K_RETURN",
+      "UP": "K_w",
+      "DOWN": "K_s",
+      "LEFT": "K_a",
+      "RIGHT": "K_d"
+    },
+    "player2": {
+      "A": "K_KP5",
+      "B": "K_KP6",
+      "SELECT": "K_KP8",
+      "START": "K_KP9",
+      "UP": "K_UP",
+      "DOWN": "K_DOWN",
+      "LEFT": "K_LEFT",
+      "RIGHT": "K_RIGHT"
+    }
+  }
+}

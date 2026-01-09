@@ -4,6 +4,7 @@ Handles input from keyboard/gamepad
 """
 import pygame
 from typing import List
+from ..util.config import Config
 
 class Controller:
     def __init__(self):
@@ -71,34 +72,47 @@ class Controller:
             self.state >>= 1
         return bit
 
+def get_pygame_key_from_string(key_str: str):
+    """Convert string representation of key to pygame key constant"""
+    # Remove 'K_' prefix if present
+    if key_str.startswith('K_'):
+        key_str = key_str[2:]
+    
+    # Get the pygame key constant
+    try:
+        return getattr(pygame, f'K_{key_str}')
+    except AttributeError:
+        # If key is not found, return a default key
+        print(f"Warning: Key '{key_str}' not found, using default")
+        return getattr(pygame, 'K_UNKNOWN')
+
 class ControllerManager:
-    def __init__(self):
+    def __init__(self, config_path: str = None):
         self.controller1 = Controller()
         self.controller2 = Controller()
-        self.keyboard_mapping = self._default_keyboard_mapping()
+        self.config = Config(config_path)
+        self.keyboard_mapping = self._load_keyboard_mapping()
     
-    def _default_keyboard_mapping(self):
-        """Set up default keyboard mappings"""
-        return {
-            # Player 1
-            pygame.K_j: 'A',           # A
-            pygame.K_k: 'B',           # B
-            pygame.K_RSHIFT: 'SELECT', # Select
-            pygame.K_RETURN: 'START',  # Start
-            pygame.K_w: 'UP',          # Up
-            pygame.K_s: 'DOWN',        # Down
-            pygame.K_a: 'LEFT',        # Left
-            pygame.K_d: 'RIGHT',       # Right
-            # Player 2
-            pygame.K_KP5: 'A',         # A
-            pygame.K_KP6: 'B',         # B
-            pygame.K_KP8: 'SELECT',    # Select
-            pygame.K_KP9: 'START',     # Start
-            pygame.K_UP: 'UP',         # Up
-            pygame.K_DOWN: 'DOWN',     # Down
-            pygame.K_LEFT: 'LEFT',     # Left
-            pygame.K_RIGHT: 'RIGHT'    # Right
-        }
+    def _load_keyboard_mapping(self):
+        """Load keyboard mappings from configuration"""
+        controller_config = self.config.get_controller_config()
+        mapping = {}
+        
+        # Player 1 mappings
+        p1_config = controller_config.get('player1', {})
+        for key_str, button in p1_config.items():
+            pygame_key = get_pygame_key_from_string(button)
+            if pygame_key != pygame.K_UNKNOWN:
+                mapping[pygame_key] = key_str
+        
+        # Player 2 mappings
+        p2_config = controller_config.get('player2', {})
+        for key_str, button in p2_config.items():
+            pygame_key = get_pygame_key_from_string(button)
+            if pygame_key != pygame.K_UNKNOWN:
+                mapping[pygame_key] = key_str
+        
+        return mapping
     
     def update_from_pygame_events(self, events: List):
         """Process pygame events to update controller states"""
@@ -120,28 +134,43 @@ class ControllerManager:
         """Update controller states based on current keyboard state"""
         keys = pygame.key.get_pressed()
         
-        # Update player 1 controls
-        self.controller1.set_key_state('A', keys[pygame.K_j])
-        self.controller1.set_key_state('B', keys[pygame.K_k])
-        self.controller1.set_key_state('SELECT', keys[pygame.K_RSHIFT])
-        self.controller1.set_key_state('START', keys[pygame.K_RETURN])
-        self.controller1.set_key_state('UP', keys[pygame.K_w])
-        self.controller1.set_key_state('DOWN', keys[pygame.K_s])
-        self.controller1.set_key_state('LEFT', keys[pygame.K_a])
-        self.controller1.set_key_state('RIGHT', keys[pygame.K_d])
+        # Load key mappings from config for player 1
+        p1_config = self.config.get_controller_config().get('player1', {})
+        self.controller1.set_key_state('A', keys[get_pygame_key_from_string(p1_config.get('A', 'K_j'))])
+        self.controller1.set_key_state('B', keys[get_pygame_key_from_string(p1_config.get('B', 'K_k'))])
+        self.controller1.set_key_state('SELECT', keys[get_pygame_key_from_string(p1_config.get('SELECT', 'K_RSHIFT'))])
+        self.controller1.set_key_state('START', keys[get_pygame_key_from_string(p1_config.get('START', 'K_RETURN'))])
+        self.controller1.set_key_state('UP', keys[get_pygame_key_from_string(p1_config.get('UP', 'K_w'))])
+        self.controller1.set_key_state('DOWN', keys[get_pygame_key_from_string(p1_config.get('DOWN', 'K_s'))])
+        self.controller1.set_key_state('LEFT', keys[get_pygame_key_from_string(p1_config.get('LEFT', 'K_a'))])
+        self.controller1.set_key_state('RIGHT', keys[get_pygame_key_from_string(p1_config.get('RIGHT', 'K_d'))])
         
-        # Update player 2 controls
-        self.controller2.set_key_state('A', keys[pygame.K_KP5])
-        self.controller2.set_key_state('B', keys[pygame.K_KP6])
-        self.controller2.set_key_state('SELECT', keys[pygame.K_KP8])
-        self.controller2.set_key_state('START', keys[pygame.K_KP9])
-        self.controller2.set_key_state('UP', keys[pygame.K_UP])
-        self.controller2.set_key_state('DOWN', keys[pygame.K_DOWN])
-        self.controller2.set_key_state('LEFT', keys[pygame.K_LEFT])
-        self.controller2.set_key_state('RIGHT', keys[pygame.K_RIGHT])
+        # Load key mappings from config for player 2
+        p2_config = self.config.get_controller_config().get('player2', {})
+        self.controller2.set_key_state('A', keys[get_pygame_key_from_string(p2_config.get('A', 'K_KP5'))])
+        self.controller2.set_key_state('B', keys[get_pygame_key_from_string(p2_config.get('B', 'K_KP6'))])
+        self.controller2.set_key_state('SELECT', keys[get_pygame_key_from_string(p2_config.get('SELECT', 'K_KP8'))])
+        self.controller2.set_key_state('START', keys[get_pygame_key_from_string(p2_config.get('START', 'K_KP9'))])
+        self.controller2.set_key_state('UP', keys[get_pygame_key_from_string(p2_config.get('UP', 'K_UP'))])
+        self.controller2.set_key_state('DOWN', keys[get_pygame_key_from_string(p2_config.get('DOWN', 'K_DOWN'))])
+        self.controller2.set_key_state('LEFT', keys[get_pygame_key_from_string(p2_config.get('LEFT', 'K_LEFT'))])
+        self.controller2.set_key_state('RIGHT', keys[get_pygame_key_from_string(p2_config.get('RIGHT', 'K_RIGHT'))])
     
-    def set_controller_keys(self, p1_keys: List, p2_keys: List):
+    def set_controller_keys(self, p1_keys: dict, p2_keys: dict):
         """Set custom key mappings for controllers"""
-        # This would take pygame key constants and map them to controller buttons
-        # Implementation would depend on how we receive the key mappings
-        pass
+        controller_config = self.config.get_controller_config()
+        
+        # Update player 1 keys
+        if p1_keys:
+            for button, key in p1_keys.items():
+                if button in controller_config['player1']:
+                    controller_config['player1'][button] = key
+        
+        # Update player 2 keys
+        if p2_keys:
+            for button, key in p2_keys.items():
+                if button in controller_config['player2']:
+                    controller_config['player2'][button] = key
+        
+        # Update the keyboard mapping
+        self.keyboard_mapping = self._load_keyboard_mapping()

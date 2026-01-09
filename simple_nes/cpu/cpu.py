@@ -4,6 +4,7 @@ Implements Ricoh 2A03 CPU (based on 6502)
 """
 import numpy as np
 from typing import Callable, Optional
+from ..util.logging import error, debug
 
 # Define common types
 Byte = np.uint8
@@ -532,7 +533,7 @@ class CPU:
             # For unimplemented opcodes, just advance PC and return default cycles
             # In a real implementation, we'd have to determine instruction length
             # based on the opcode, but for now we'll just return a default
-            print(f"Unimplemented opcode: {hex(opcode)} at PC: {hex(self.r_PC - 1)}")
+            error(f"Unimplemented opcode: {hex(opcode)} at PC: {hex(self.r_PC - 1)}")
             cycles = 2
         
         return cycles

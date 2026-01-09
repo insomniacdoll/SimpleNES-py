@@ -17,6 +17,7 @@ from simple_nes.cartridge.cartridge import Cartridge
 from simple_nes.cartridge.mapper import Mapper
 from simple_nes.controller.controller import ControllerManager
 from simple_nes.apu.apu import APU
+from simple_nes.util.logging import info, error, debug, warning
 
 # Constants
 NES_VIDEO_WIDTH = 256
@@ -34,7 +35,7 @@ class VirtualScreen:
             self.buffer[y, x] = color
 
 class Emulator:
-    def __init__(self):
+    def __init__(self, config_path: str = None):
         # Initialize pygame
         pygame.init()
         
@@ -58,7 +59,11 @@ class Emulator:
         # Create APU for audio
         self.apu = APU()
         
-        self.controller_manager = ControllerManager()
+        # Initialize controller manager with config
+        self.controller_manager = ControllerManager(config_path)
+        
+        # Log emulator initialization
+        info("SimpleNES emulator initialized")
         
         # Initialize pygame window
         self.screen_scale = 3  # Default scale
@@ -187,8 +192,16 @@ class Emulator:
     
     def load_rom(self, rom_path: str) -> bool:
         """Load a ROM file into the emulator"""
+        debug(f"Attempting to load ROM: {rom_path}")
+        
         if not self.cartridge.load_from_file(rom_path):
+            error(f"Failed to load ROM: {rom_path}")
             return False
+        
+        info(f"Successfully loaded ROM: {rom_path}")
+        info(f"  Mapper: {self.cartridge.get_mapper()}")
+        info(f"  PRG ROM size: {len(self.cartridge.get_rom())} bytes")
+        info(f"  CHR ROM size: {len(self.cartridge.get_vrom())} bytes")
         
         # Create appropriate mapper
         self.mapper = Mapper.create_mapper(
@@ -198,6 +211,10 @@ class Emulator:
             self._update_mirroring  # mirroring callback
         )
         
+        if self.mapper is None:
+            error(f"Failed to create mapper for ROM: {rom_path}")
+            return False
+        
         # Set the mapper in the bus and picture bus
         self.bus.set_mapper(self.mapper)
         # Update the picture bus to refer to mapper for CHR access
@@ -206,27 +223,29 @@ class Emulator:
         # Reset CPU to start execution
         self.cpu.reset()
         
+        info("ROM loaded and emulator reset successfully")
         return True
     
     def run(self, rom_path: str):
         """Main emulation loop"""
         if not self.load_rom(rom_path):
-            print(f"Failed to load ROM: {rom_path}")
+            error(f"Failed to load ROM: {rom_path}")
             return
+        
+        info("Starting emulation...")
         
         running = True
         frame_count = 0
-        
-        print("Starting emulation...")
-        print("Press ESC to exit")
         
         while running:
             # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    info("Emulator window closed by user")
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        info("ESC pressed, exiting emulator")
                         running = False
             
             # Update controller states based on current keys
@@ -265,9 +284,10 @@ class Emulator:
             frame_count += 1
             
             # Print status occasionally
-            if frame_count % 600 == 0:  # Every 10 seconds at 60 FPS
-                print(f"Running... Frame: {frame_count}")
+            if frame_count % 3600 == 0:  # Every 60 seconds at 60 FPS
+                info(f"Emulation running... Frame: {frame_count}")
         
+        info("Emulator shutting down...")
         pygame.quit()
         sys.exit()
     

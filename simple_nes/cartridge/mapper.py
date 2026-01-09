@@ -5,6 +5,7 @@ Handles different NES cartridge mapper types
 from abc import ABC, abstractmethod
 from typing import List, Callable
 from .cartridge import Cartridge
+from ..util.logging import warning
 
 class Mapper(ABC):
     class Type:
@@ -75,7 +76,7 @@ class Mapper(ABC):
         elif mapper_type == Mapper.Type.SxROM:
             return SxROM(cart)
         else:
-            print(f"Unsupported mapper type: {mapper_type}, using NROM")
+            warning(f"Unsupported mapper type: {mapper_type}, using NROM")
             return NROM(cart)
 
 

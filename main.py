@@ -8,6 +8,7 @@ import sys
 import os
 import argparse
 from simple_nes.emulator.emulator import Emulator
+from simple_nes.util.logging import init_logging, info, error
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -35,6 +36,12 @@ def parse_arguments():
         type=int,
         help='Set the height of the emulation screen'
     )
+    parser.add_argument(
+        '-c', '--config',
+        type=str,
+        default='config.json',
+        help='Path to the configuration file (default: config.json)'
+    )
     
     return parser.parse_args()
 
@@ -42,8 +49,12 @@ def main():
     """Main function"""
     args = parse_arguments()
     
-    # Create emulator instance
-    emulator = Emulator()
+    # Initialize logging system
+    init_logging()
+    info("SimpleNES-py emulator starting up...")
+    
+    # Create emulator instance with config
+    emulator = Emulator(config_path=args.config)
     
     # Set video parameters
     if args.scale:
@@ -55,18 +66,18 @@ def main():
     
     # Check if ROM path provided
     if not args.rom_path:
-        print("No ROM file provided. Usage: python main.py [-s scale] [-w width] [-H height] <rom_path>")
+        error("No ROM file provided. Usage: python main.py [-s scale] [-w width] [-H height] [-c config] <rom_path>")
         # For testing purposes, you could load a default ROM if available
         # rom_path = "test_rom.nes"
         return
     
     # Verify ROM file exists
     if not os.path.exists(args.rom_path):
-        print(f"ROM file not found: {args.rom_path}")
+        error(f"ROM file not found: {args.rom_path}")
         return
     
     # Run the emulator
-    print(f"Loading ROM: {args.rom_path}")
+    info(f"Starting emulator with ROM: {args.rom_path}")
     emulator.run(args.rom_path)
 
 if __name__ == "__main__":

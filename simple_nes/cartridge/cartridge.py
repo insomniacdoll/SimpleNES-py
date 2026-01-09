@@ -4,6 +4,7 @@ Handles ROM loading and mapper logic
 """
 from typing import List, Optional, Callable
 import os
+from ..util.logging import info, error, debug
 
 # Name table mirroring types
 class NameTableMirroring:
@@ -24,8 +25,10 @@ class Cartridge:
     
     def load_from_file(self, path: str) -> bool:
         """Load ROM from file"""
+        debug(f"Attempting to load ROM from: {path}")
+        
         if not os.path.exists(path):
-            print(f"ROM file not found: {path}")
+            error(f"ROM file not found: {path}")
             return False
         
         try:
@@ -34,12 +37,12 @@ class Cartridge:
             
             # Check for iNES header (16 bytes)
             if len(rom_data) < 16:
-                print("Invalid ROM file: too small")
+                error("Invalid ROM file: too small")
                 return False
             
             # Validate header signature
             if rom_data[0] != 0x4E or rom_data[1] != 0x45 or rom_data[2] != 0x53 or rom_data[3] != 0x1A:
-                print("Invalid ROM file: wrong header")
+                error("Invalid ROM file: wrong header")
                 return False
             
             # Extract header information
@@ -87,15 +90,16 @@ class Cartridge:
                 # Initialize CHR RAM if needed
                 self.chr_rom = [0] * 8192  # 8KB of CHR RAM
             
-            print(f"Loaded ROM: {os.path.basename(path)}")
-            print(f"  Mapper: {self.mapper_number}")
-            print(f"  PRG ROM: {prg_rom_size} bytes")
-            print(f"  CHR ROM: {chr_rom_size} bytes")
-            print(f"  Mirroring: {self.name_table_mirroring}")
+            info(f"Loaded ROM: {os.path.basename(path)}")
+            info(f"  Mapper: {self.mapper_number}")
+            info(f"  PRG ROM: {prg_rom_size} bytes")
+            info(f"  CHR ROM: {chr_rom_size} bytes")
+            info(f"  Mirroring: {self.name_table_mirroring}")
             
+            debug(f"ROM loaded successfully: {path}")
             return True
         except Exception as e:
-            print(f"Error loading ROM: {e}")
+            error(f"Error loading ROM: {e}")
             return False
     
     def get_rom(self) -> List[int]:
