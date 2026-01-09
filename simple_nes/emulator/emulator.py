@@ -274,21 +274,25 @@ class Emulator:
             
             # Run CPU for a frame's worth of cycles
             while cpu_cycles < target_cpu_cycles:
-                # Execute one CPU instruction
-                cycles = self.cpu.step()
-                cpu_cycles += cycles
-                
-                # Run PPU cycles (3x CPU cycles)
-                for _ in range(cycles * 3):
+                # Run PPU cycles (3x CPU cycles) - BEFORE CPU step (matching C++ implementation)
+                for _ in range(3):
                     self.ppu.step()
                     
                     # Check for PPU scanline-based interrupts (for MMC3, etc.)
                     if self.mapper:
                         self.mapper.scanline_irq()
                 
+                # Execute one CPU instruction
+                cycles = self.cpu.step()
+                cpu_cycles += cycles
+                
                 # Run APU cycles (same as CPU cycles)
                 for _ in range(cycles):
                     self.apu.step()
+                
+                # Run additional PPU cycles for multi-cycle instructions (cycles-1 extra cycles)
+                for _ in range((cycles - 1) * 3):
+                    self.ppu.step()
             
             # Render frame
             self._render_frame()

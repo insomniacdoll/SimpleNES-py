@@ -315,15 +315,16 @@ class MMC3(Mapper):
 
     def scanline_irq(self):
         """Handle scanline-based IRQ for MMC3"""
-        if self.irq_reload:
+        zero_transition = False
+        
+        if self.irq_counter == 0 or self.irq_reload:
             self.irq_counter = self.irq_latch
             self.irq_reload = False
-        elif self.irq_counter == 0:
-            self.irq_counter = self.irq_latch
         else:
             self.irq_counter -= 1
-
-        if self.irq_counter == 0 and self.irq_enabled:
+            zero_transition = self.irq_counter == 0
+        
+        if zero_transition and self.irq_enabled:
             if self.interrupt_cb:
                 self.interrupt_cb()
 

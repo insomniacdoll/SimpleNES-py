@@ -133,7 +133,8 @@ class PPU:
                 self.data_address = int(self.data_address | (self.temp_address & 0x7be0))  # Copy
             
             # If rendering is on, every other frame is one cycle shorter
-            if self.cycle >= ScanlineEndCycle - (not self.even_frame and self.show_background and self.show_sprites):
+            skip_cycle = (not self.even_frame) and self.show_background and self.show_sprites
+            if self.cycle >= ScanlineEndCycle - (1 if skip_cycle else 0):
                 self.pipeline_state = 1  # Render
                 self.cycle = 0
                 self.scanline = 0
@@ -226,8 +227,20 @@ class PPU:
                         
                         sprite_foreground = not bool(attribute & 0x20)
                         
-                        # Sprite-0 hit detection
-                        if not self.spr_zero_hit and self.show_background and i == 0 and spr_opaque and bg_opaque:
+                        # Sprite-0 hit detection (matching C++ implementation)
+                        # Only detect hit if:
+                        # 1. Background is being rendered
+                        # 2. This is sprite 0
+                        # 3. Both sprite and background are opaque
+                        # 4. Sprite is not hidden at edge (or x >= 8)
+                        # 5. Background is not hidden at edge (or x >= 8)
+                        if (not self.spr_zero_hit and 
+                            self.show_background and 
+                            i == 0 and 
+                            spr_opaque and 
+                            bg_opaque and
+                            (not self.hide_edge_sprites or x >= 8) and
+                            (not self.hide_edge_background or x >= 8)):
                             self.spr_zero_hit = True
                         
                         break
@@ -375,11 +388,15 @@ class PPU:
     
     def get_data(self) -> int:
         """Read from PPUDATA register (0x2007)"""
+        # Check if current address is in palette range before reading
+        is_palette = self.data_address >= 0x3f00
+        
         data = self.bus.read(self.data_address)
         self.data_address = int(self.data_address + self.data_addr_increment)
         
-        # Reads are delayed by one byte/read when address is in this range
-        if self.data_address < 0x3f00:
+        # Reads are delayed by one byte/read when address is NOT in palette range
+        if not is_palette:
+            # Return from the data buffer and store the current value in the buffer
             data, self.data_buffer = self.data_buffer, data
         
         return data

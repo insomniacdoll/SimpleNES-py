@@ -27,6 +27,7 @@ class APU:
         self.frame_counter = 0
         self.frame_interrupt = False
         self.interrupt_inhibit = False
+        self.frame_counter_mode = 0  # 0=4-step, 1=5-step
         
         # Status register
         self.status = 0
@@ -64,19 +65,40 @@ class APU:
             self.dmc.enabled = bool(value & 0x10)
         elif addr == 0x4017:
             # Frame counter register
-            self.interrupt_inhibit = bool(value & 0x40)
+            self.frame_counter_mode = (value >> 7) & 0x01  # Bit 7: mode (0=4-step, 1=5-step)
+            self.interrupt_inhibit = bool(value >> 6)  # Bit 6: interrupt inhibit
             # Reset frame counter
             self.frame_counter = 0
+            # Clear frame interrupt if inhibit is set
+            if self.interrupt_inhibit:
+                self.frame_interrupt = False
     
     def read_register(self, addr: int) -> int:
         """Read from APU register"""
         if addr == 0x4015:
             # Status register
             result = 0
+            # Bit 0-3: Channel length counter status (1 if not muted)
+            # A channel is not muted if enabled and length counter > 0
+            if self.pulse1.enabled and self.pulse1.length_counter > 0:
+                result |= 0x01
+            if self.pulse2.enabled and self.pulse2.length_counter > 0:
+                result |= 0x02
+            if self.triangle.enabled and self.triangle.length_counter > 0:
+                result |= 0x04
+            if self.noise.enabled and self.noise.length_counter > 0:
+                result |= 0x08
+            # Bit 4: DMC active
+            if self.dmc.length_counter > 0 or self.dmc.loop_flag:
+                result |= 0x10
+            # Bit 6: Frame interrupt
             if self.frame_interrupt:
                 result |= 0x40
+            # Bit 7: DMC interrupt
             if self.dmc.irq_flag:
                 result |= 0x80
+            
+            # Clear frame interrupt flag
             self.frame_interrupt = False
             return result
         return 0
@@ -87,35 +109,48 @@ class APU:
         # and generates audio samples periodically
         
         # Update frame counter (NTSC)
+        # Using constants from C++ implementation
+        Q1 = 7457
+        Q2 = 14913
+        Q3 = 22371
+        Q4 = 29829
+        Q5 = 37281
+        seq4step_length = Q4 + 1
+        seq5step_length = Q5 + 1
+        
         self.frame_counter += 1
         
         # The frame counter generates 4 or 5 step clocking signals per frame
         # depending on bit 7 of $4017
         if not self.interrupt_inhibit:
-            if self.frame_counter == 7459:  # First tick
+            # 4-step mode (default)
+            if self.frame_counter == Q1:
                 self._quarter_frame_update()
-            elif self.frame_counter == 14917:  # Second tick
+            elif self.frame_counter == Q2:
                 self._quarter_frame_update()
                 self._half_frame_update()
-            elif self.frame_counter == 22375:  # Third tick
+            elif self.frame_counter == Q3:
                 self._quarter_frame_update()
-            elif self.frame_counter == 29831:  # Fourth tick
+            elif self.frame_counter == Q4:
                 self._quarter_frame_update()
                 self._half_frame_update()
                 self.frame_interrupt = True  # Generate interrupt
+                # Note: In a complete implementation, this would trigger IRQ
+            elif self.frame_counter == seq4step_length:
                 self.frame_counter = 0  # Reset counter
         else:
-            # Mode where interrupts are inhibited
-            if self.frame_counter == 3729:  # First tick
+            # 5-step mode (interrupts inhibited)
+            if self.frame_counter == Q1:
                 self._quarter_frame_update()
-            elif self.frame_counter == 7457:  # Second tick
-                self._quarter_frame_update()
-                self._half_frame_update()
-            elif self.frame_counter == 11185:  # Third tick
-                self._quarter_frame_update()
-            elif self.frame_counter == 14913:  # Fourth tick
+            elif self.frame_counter == Q2:
                 self._quarter_frame_update()
                 self._half_frame_update()
+            elif self.frame_counter == Q3:
+                self._quarter_frame_update()
+            elif self.frame_counter == Q5:
+                self._quarter_frame_update()
+                self._half_frame_update()
+            elif self.frame_counter == seq5step_length:
                 self.frame_counter = 0  # Reset counter
     
     def _quarter_frame_update(self):
@@ -142,17 +177,20 @@ class APU:
         noise_output = self.noise.output()
         dmc_output = self.dmc.output()
         
-        # Mix the channels (simple linear mixing)
-        # Pulse channels are mixed together with a non-linear curve
-        pulse_mixed = 0.00752 * (pulse1_output + pulse2_output)
-        pulse_mixed -= 0.00752 * pulse1_output * pulse2_output
+        # Mix the channels using the correct non-linear formula (matching C++ implementation)
+        # Pulse channels: 95.88 / ((8128.0 / (pulse1 + pulse2)) + 100.0)
+        pulse_out = 0.0
+        if pulse1_output + pulse2_output != 0:
+            pulse_out = 95.88 / ((8128.0 / (pulse1_output + pulse2_output)) + 100.0)
         
-        # Triangle and noise are mixed linearly
-        tnd_output = triangle_output + noise_output + dmc_output
-        tnd_mixed = 0.00851 * tnd_output
+        # TND channels: 159.79 / (1.0 / ((triangle / 8227.0) + (noise / 12241.0) + (dmc / 22638.0)) + 100.0)
+        tnd_out = 0.0
+        if triangle_output + noise_output + dmc_output != 0:
+            tnd_sum = (triangle_output / 8227.0) + (noise_output / 12241.0) + (dmc_output / 22638.0)
+            tnd_out = 159.79 / (1.0 / tnd_sum + 100.0)
         
         # Combine all channels
-        total_output = pulse_mixed + tnd_mixed
+        total_output = pulse_out + tnd_out
         
         # Clamp to valid range [-1.0, 1.0]
         total_output = max(-1.0, min(1.0, total_output))
@@ -212,6 +250,12 @@ class PulseChannel:
             [0, 1, 1, 1, 1, 0, 0, 0],  # 50%
             [1, 0, 0, 1, 1, 1, 1, 1]   # 25% negated
         ]
+        
+        # Sweep unit internal state
+        self.sweep_reload = False
+        self.sweep_divider_counter = 0
+        self.sweep_target_period = 0
+        self.ones_complement = (channel_num == 0)  # Pulse1 uses ones complement
     
     def write_register(self, reg: int, value: int):
         """Write to pulse channel register"""
@@ -248,17 +292,71 @@ class PulseChannel:
     
     def update_sweep(self):
         """Update sweep unit"""
-        # The sweep unit adds the current timer to a shifted version of itself
-        # This is used to modulate the pitch up or down
-        pass
+        # Reload sweep divider
+        if self.sweep_reload:
+            self.sweep_divider_counter = self.sweep_divider
+            self.sweep_reload = False
+            return
+        
+        # If sweep is disabled, don't update
+        if not self.sweep_enabled:
+            return
+        
+        # Decrement sweep divider
+        if self.sweep_divider_counter > 0:
+            self.sweep_divider_counter -= 1
+            return
+        
+        # Reset sweep divider
+        self.sweep_divider_counter = self.sweep_divider
+        
+        # Update period if shift > 0
+        if self.sweep_shift > 0:
+            current_period = (self.timer_high << 8) | self.timer_low
+            target_period = self.calculate_sweep_target(current_period)
+            
+            if not self.is_sweep_muted(current_period, target_period):
+                self.timer_low = target_period & 0xFF
+                self.timer_high = (target_period >> 8) & 0x07
+    
+    def calculate_sweep_target(self, current_period: int) -> int:
+        """Calculate sweep target period"""
+        amount = current_period >> self.sweep_shift
+        
+        if not self.sweep_negate:
+            return current_period + amount
+        elif self.ones_complement:
+            # Ones complement (for Pulse2)
+            return max(0, current_period - amount - 1)
+        else:
+            # Two's complement (for Pulse1)
+            return max(0, current_period - amount)
+    
+    def is_sweep_muted(self, current_period: int, target_period: int) -> bool:
+        """Check if sweep is muted"""
+        # Mute if target period > 0x7FF
+        if target_period > 0x7FF:
+            return True
+        
+        # Mute if current period < 8 (too high frequency)
+        if current_period < 8:
+            return True
+        
+        return False
     
     def output(self) -> float:
         """Get the current output value for this channel"""
         if not self.enabled or self.length_counter == 0:
             return 0.0
-            
+        
         # Calculate timer value
         timer = (self.timer_high << 8) | self.timer_low
+        
+        # Check if muted by sweep
+        if self.sweep_enabled:
+            target_period = self.calculate_sweep_target(timer)
+            if self.is_sweep_muted(timer, target_period):
+                return 0.0
         
         # Update waveform position
         self.waveform_pos = (self.waveform_pos + 1) % 8
@@ -295,12 +393,17 @@ class TriangleChannel:
         
         # Triangle waveform: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
         self.triangle_wave = list(range(16)) + list(range(15, -1, -1))
+        
+        # Linear counter control flags
+        self.linear_counter_control = False
+        self.linear_counter_reload = False
     
     def write_register(self, reg: int, value: int):
         """Write to triangle channel register"""
         if reg == 0:
             self.linear_counter_load = value & 0x7F
             self.length_counter_halt = bool(value & 0x80)
+            self.linear_counter_control = bool(value & 0x80)  # Same bit is used for both
         elif reg == 2:
             self.timer_low = value
         elif reg == 3:
@@ -308,13 +411,18 @@ class TriangleChannel:
             self.length_counter_load_reg = (value >> 3) & 0x1F
             if self.enabled:
                 self.length_counter = self.length_counter_load_reg
+            self.linear_counter_reload = True
     
     def update_linear_counter(self):
         """Update linear counter"""
-        if self.length_counter_halt:
+        if self.linear_counter_reload:
             self.linear_counter = self.linear_counter_load
         elif self.linear_counter > 0:
             self.linear_counter -= 1
+        
+        # Clear reload flag
+        if not self.length_counter_halt:
+            self.linear_counter_reload = False
     
     def update_length_counter(self):
         """Update length counter"""
@@ -393,28 +501,33 @@ class NoiseChannel:
     
     def output(self) -> float:
         """Get the current output value for this channel"""
-        if not self.enabled or self.length_counter == 0 or (self.shift_register & 0x01) == 1:
+        if not self.enabled or self.length_counter == 0:
             return 0.0
         
-        # Update noise generator
-        self.timer -= 1
-        if self.timer <= 0:
-            self.timer = self.period
-            
-            # Shift register (XOR feedback)
-            feedback = (self.shift_register & 1) ^ ((self.shift_register >> 1) & 1)
-            self.shift_register >>= 1
-            self.shift_register |= (feedback << 14)  # 15-bit shift register
-            
-            # For short mode (93 bits), use bit 6 instead of bit 1
-            if self.mode_flag:
-                feedback = (self.shift_register & 1) ^ ((self.shift_register >> 6) & 1)
-                self.shift_register >>= 1
-                self.shift_register |= (feedback << 8)  # 8-bit shift register for short mode
+        # Check if bit 0 is set (if set, output is muted)
+        if self.shift_register & 0x01:
+            return 0.0
         
         # Calculate volume
         volume = self.volume if self.constant_volume else self.envelope_volume
         return volume / 15.0
+    
+    def clock(self):
+        """Clock the noise generator (called at APU rate)"""
+        self.timer -= 1
+        if self.timer <= 0:
+            self.timer = self.period
+            
+            # Shift register with XOR feedback
+            if self.mode_flag:
+                # Short mode (93 bits): use bit 0 and bit 6
+                feedback = (self.shift_register & 1) ^ ((self.shift_register >> 6) & 1)
+            else:
+                # Long mode (32767 bits): use bit 0 and bit 1
+                feedback = (self.shift_register & 1) ^ ((self.shift_register >> 1) & 1)
+            
+            self.shift_register >>= 1
+            self.shift_register |= (feedback << 14)  # 15-bit shift register
 
 class DMCChannel:
     def __init__(self):
@@ -434,6 +547,22 @@ class DMCChannel:
         self.address_counter = 0
         self.dac = 0
         self.timer = 0
+        
+        # DMC sampling state
+        self.sample_buffer = 0
+        self.sample_buffer_empty = True
+        self.bits_remaining = 0
+        self.shift_register = 0
+        
+        # DMA callback
+        self.dma_callback = None
+        
+        # DMC frequency periods (in CPU cycles)
+        self.dmc_periods = [428, 380, 340, 320, 254, 254, 170, 170, 127, 127, 114, 114, 107, 107, 98, 98]
+    
+    def set_dma_callback(self, callback):
+        """Set the DMA callback for reading samples"""
+        self.dma_callback = callback
     
     def write_register(self, reg: int, value: int):
         """Write to DMC channel register"""
@@ -449,12 +578,79 @@ class DMCChannel:
             self.address_counter = self.sample_address
         elif reg == 3:
             self.sample_length = (value * 0x10) + 1
+            if self.enabled:
+                self.length_counter = self.sample_length
+    
+    def control(self, value: int):
+        """Control DMC channel (from APU status register)"""
+        self.enabled = bool(value & 0x10)
+        if self.enabled and self.length_counter == 0:
             self.length_counter = self.sample_length
+            self.address_counter = self.sample_address
     
     def update_length_counter(self):
         """Update length counter"""
         if self.length_counter > 0:
             self.length_counter -= 1
+            if self.length_counter == 0:
+                if self.loop_flag:
+                    self.length_counter = self.sample_length
+                    self.address_counter = self.sample_address
+                elif self.irq_enabled:
+                    self.irq_flag = True
+    
+    def clear_interrupt(self):
+        """Clear DMC interrupt flag"""
+        self.irq_flag = False
+    
+    def has_more_samples(self) -> bool:
+        """Check if DMC has more samples to play"""
+        return self.length_counter > 0 or self.loop_flag
+    
+    def clock(self):
+        """Clock the DMC channel"""
+        # Update timer
+        self.timer -= 1
+        if self.timer > 0:
+            return
+        
+        # Reset timer
+        self.timer = self.dmc_periods[self.frequency_index]
+        
+        # Load sample buffer if empty
+        if self.sample_buffer_empty and self.length_counter > 0:
+            if self.dma_callback:
+                self.sample_buffer = self.dma_callback(self.address_counter >> 6)
+            self.sample_buffer_empty = False
+            self.address_counter = (self.address_counter + 1) | 0x8000
+            self.length_counter -= 1
+            if self.length_counter == 0:
+                if self.loop_flag:
+                    self.length_counter = self.sample_length
+                    self.address_counter = self.sample_address
+                elif self.irq_enabled:
+                    self.irq_flag = True
+        
+        # Output sample
+        if self.bits_remaining == 0:
+            if not self.sample_buffer_empty:
+                self.shift_register = self.sample_buffer
+                self.sample_buffer_empty = True
+                self.bits_remaining = 8
+            else:
+                self.shift_register = 0
+                self.bits_remaining = 8
+        
+        # Update DAC
+        if self.shift_register & 0x01:
+            if self.dac <= 125:
+                self.dac += 2
+        else:
+            if self.dac >= 2:
+                self.dac -= 2
+        
+        self.shift_register >>= 1
+        self.bits_remaining -= 1
     
     def output(self) -> float:
         """Get the current output value for this channel"""

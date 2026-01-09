@@ -60,8 +60,13 @@ class CPU:
         self.r_X = Byte(0)
         self.r_Y = Byte(0)
         
+        # Reset all status flags explicitly (matching C++ implementation)
         self.f_I = True  # Interrupts disabled after reset
+        self.f_C = False  # Carry flag
+        self.f_Z = False  # Zero flag
         self.f_D = False  # Decimal mode off
+        self.f_V = False  # Overflow flag
+        self.f_N = False  # Negative flag
         
         self.m_skipCycles = 0
         self.m_cycles = 0
@@ -83,17 +88,15 @@ class CPU:
         if self.m_pendingNMI:
             self._interrupt_sequence('NMI')
             self.m_pendingNMI = False
-            self.m_pendingIRQ = False
+            # Don't clear m_pendingIRQ here - only clear when IRQ is actually processed
             return 7  # NMI takes 7 cycles
         
         elif self.m_pendingIRQ:
             if not self.f_I:  # Only process IRQ if interrupt flag is clear
                 self._interrupt_sequence('IRQ')
-                self.m_pendingNMI = False
                 self.m_pendingIRQ = False
                 return 7  # IRQ takes 7 cycles
-            else:
-                self.m_pendingIRQ = False
+            # Don't clear m_pendingIRQ if IRQ is disabled - keep it pending
         
         # Fetch opcode
         opcode = self.memory.read(self.r_PC)
@@ -347,61 +350,6 @@ class CPU:
             self.r_X = self.memory.read(addr)
             self.set_flags_ZN(self.r_X)
             cycles = 4
-        
-        elif opcode == 0xB5:  # LDA zero page, X
-            addr = (int(self.memory.read(self.r_PC)) + int(self.r_X)) & 0xFF
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            self.r_A = self.memory.read(addr)
-            self.set_flags_ZN(self.r_A)
-            cycles = 4
-        
-        elif opcode == 0xAD:  # LDA absolute
-            lo = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            hi = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            addr = int((hi << 8) | lo)
-            self.r_A = self.memory.read(addr)
-            self.set_flags_ZN(self.r_A)
-            cycles = 4
-        
-        elif opcode == 0xBD:  # LDA absolute, X
-            lo = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            hi = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            base_addr = int((hi << 8) | lo)
-            addr = Address(int(base_addr) + int(self.r_X))
-            
-            # Check for page boundary crossing
-            if (base_addr & 0xFF00) != (addr & 0xFF00):
-                cycles = 5  # Extra cycle for page crossing
-            else:
-                cycles = 4
-            
-            self.r_A = self.memory.read(addr)
-            self.set_flags_ZN(self.r_A)
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-        
-        elif opcode == 0xA2:  # LDX immediate
-            value = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            self.r_X = Byte(value)
-            self.set_flags_ZN(self.r_X)
-            cycles = 2
-        
-        elif opcode == 0xA0:  # LDY immediate
-            value = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            self.r_Y = Byte(value)
-            self.set_flags_ZN(self.r_Y)
-            cycles = 2
-        
-        elif opcode == 0x85:  # STA zero page
-            addr = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            self.memory.write(addr, self.r_A)
-            cycles = 3
         
         elif opcode == 0x8D:  # STA absolute
             lo = int(self.memory.read(self.r_PC))
@@ -1187,8 +1135,11 @@ class CPU:
             cycles = 4
         
         elif opcode == 0x08:  # PHP - Push Processor Status
-            flag_byte = (self.f_C | (self.f_Z << 1) | (self.f_I << 2) | 
-                         (self.f_D << 3) | 0x10 | 0x04 | (self.f_V << 6) | (self.f_N << 7))
+            # Correct flag byte format matching C++ implementation:
+            # Bit 7: N, Bit 6: V, Bit 5: 1 (unused), Bit 4: B (break flag)
+            # Bit 3: D, Bit 2: I, Bit 1: Z, Bit 0: C
+            flag_byte = (self.f_N << 7) | (self.f_V << 6) | (1 << 5) | (1 << 4) | \
+                        (self.f_D << 3) | (self.f_I << 2) | (self.f_Z << 1) | self.f_C
             self.push_stack(flag_byte)
             cycles = 3
         
@@ -1998,6 +1949,6 @@ class CPU:
     
     def skip_DMA_cycles(self):
         """Skip cycles after DMA operation"""
-        self.m_skipCycles += 513
-        if self.m_cycles & 0x0002:
+        self.m_skipCycles += 513  # 256 read + 256 write + 1 dummy read
+        if self.m_cycles & 1:  # +1 if on odd cycle (matching C++ implementation)
             self.m_skipCycles += 1
