@@ -135,10 +135,32 @@ class APU:
     
     def generate_audio(self):
         """Generate audio samples for playback"""
-        # This would generate audio based on the state of all channels
-        # For now, we'll just return a placeholder
-        # In a real implementation, we would mix all channels and output to pygame mixer
-        pass
+        # Get output from each channel
+        pulse1_output = self.pulse1.output()
+        pulse2_output = self.pulse2.output()
+        triangle_output = self.triangle.output()
+        noise_output = self.noise.output()
+        dmc_output = self.dmc.output()
+        
+        # Mix the channels (simple linear mixing)
+        # Pulse channels are mixed together with a non-linear curve
+        pulse_mixed = 0.00752 * (pulse1_output + pulse2_output)
+        pulse_mixed -= 0.00752 * pulse1_output * pulse2_output
+        
+        # Triangle and noise are mixed linearly
+        tnd_output = triangle_output + noise_output + dmc_output
+        tnd_mixed = 0.00851 * tnd_output
+        
+        # Combine all channels
+        total_output = pulse_mixed + tnd_mixed
+        
+        # Clamp to valid range [-1.0, 1.0]
+        total_output = max(-1.0, min(1.0, total_output))
+        
+        # Convert to 16-bit signed integer
+        sample = int(total_output * 32767)
+        
+        return sample
     
     def play_sample(self, sample_data):
         """Play audio sample if mixer is available"""

@@ -55,7 +55,7 @@ class Cartridge:
             flags_10 = rom_data[10]
             
             # Extract mapper number
-            self.mapper_number = ((flags_6 >> 4) | (flags_7 & 0xF0))
+            self.mapper_number = ((flags_6 >> 4) & 0xF) | (flags_7 & 0xF0)
             
             # Extract mirroring type
             if flags_6 & 0x01:
@@ -119,5 +119,7 @@ class Cartridge:
         return self.name_table_mirroring
     
     def has_extended_ram(self) -> bool:
-        """Check if cartridge has extended RAM"""
-        return self.extended_ram
+        """Check if cartridge has extended RAM.
+        Some ROMs don't have this set correctly, plus there's no particular reason to disable it.
+        """
+        return True

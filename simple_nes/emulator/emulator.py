@@ -33,6 +33,11 @@ class VirtualScreen:
         """Update a single pixel in the virtual screen"""
         if 0 <= x < self.width and 0 <= y < self.height:
             self.buffer[y, x] = color
+    
+    def set_pixel(self, x: int, y: int, color: tuple):
+        """Set a single pixel in the virtual screen (alias for update_pixel)"""
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.buffer[y, x] = color
 
 class Emulator:
     def __init__(self, config_path: str = None):
@@ -121,13 +126,19 @@ class Emulator:
     
     def _setup_io_callbacks(self):
         """Set up callbacks for I/O register access"""
-        # PPU registers
+        # PPU write registers
         self.bus.set_write_callback(0x2000, self.ppu.control)
         self.bus.set_write_callback(0x2001, self.ppu.set_mask)
         self.bus.set_write_callback(0x2003, self.ppu.set_oam_address)
         self.bus.set_write_callback(0x2005, self.ppu.set_scroll)
         self.bus.set_write_callback(0x2006, self.ppu.set_data_address)
         self.bus.set_write_callback(0x2007, self.ppu.set_data)
+        self.bus.set_write_callback(0x2004, self.ppu.set_oam_data)
+        
+        # PPU read registers
+        self.bus.set_read_callback(0x2002, self.ppu.get_status)
+        self.bus.set_read_callback(0x2007, self.ppu.get_data)
+        self.bus.set_read_callback(0x2004, self.ppu.get_oam_data)
         
         # Controller registers
         self.bus.set_read_callback(0x4016, self._read_controller1)
@@ -139,9 +150,11 @@ class Emulator:
     
     def _nmi_interrupt(self):
         """Handle NMI interrupt from PPU"""
-        # In a real implementation, this would set a flag for the CPU
-        # to handle the interrupt on the next instruction
-        self.cpu.m_pendingNMI = True
+        self.cpu.interrupt('NMI')
+    
+    def _irq_interrupt(self):
+        """Handle IRQ interrupt from mapper (e.g., MMC3)"""
+        self.cpu.interrupt('IRQ')
     
     def _read_controller1(self) -> int:
         """Read from controller port 1"""
@@ -207,7 +220,8 @@ class Emulator:
         self.mapper = Mapper.create_mapper(
             self.cartridge.get_mapper(),
             self.cartridge,
-            self._nmi_interrupt,  # interrupt callback
+            self._irq_interrupt,  # interrupt callback for IRQ
+            self._nmi_interrupt,  # NMI callback
             self._update_mirroring  # mirroring callback
         )
         

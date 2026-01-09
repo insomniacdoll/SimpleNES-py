@@ -55,7 +55,7 @@ class Renderer:
         for y in range(self.screen_height):
             for x in range(self.screen_width):
                 # Get RGB values from picture buffer
-                r, g, b = picture_buffer[y, x]
+                r, g, b = picture_buffer[x, y]
                 color = (int(r), int(g), int(b))
                 temp_surface.set_at((x, y), color)
         
@@ -144,3 +144,16 @@ class PictureBus:
             # Palette memory
             palette_addr = (addr - 0x3F00) & 0x1F  # Mirror at 0x20 bytes
             self.palette_memory[palette_addr] = value
+    
+    def read_palette(self, addr):
+        """Read from palette memory"""
+        # Palette memory is at 0x3F00-0x3FFF, mirrored every 32 bytes
+        # The first 16 bytes are background colors, next 16 are sprite colors
+        palette_addr = addr & 0x1F  # Mirror at 0x20 bytes
+        
+        # Handle the special case where addresses 0x10, 0x14, 0x18, 0x1C
+        # mirror to 0x00, 0x04, 0x08, 0x0C respectively
+        if palette_addr >= 0x10 and palette_addr % 4 == 0:
+            palette_addr -= 0x10
+        
+        return self.palette_memory[palette_addr]

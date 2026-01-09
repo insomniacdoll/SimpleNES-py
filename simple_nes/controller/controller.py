@@ -43,34 +43,25 @@ class Controller:
     
     def strobe_changed(self, strobe: bool):
         """Handle strobe signal change from CPU"""
-        if not self.strobe and strobe:
-            # Rising edge - latch current state
+        if strobe:
+            # When strobe is 1, latch current state
             self.state = 0
-            if self.buttons['A']:
-                self.state |= 1 << 0
-            if self.buttons['B']:
-                self.state |= 1 << 1
-            if self.buttons['SELECT']:
-                self.state |= 1 << 2
-            if self.buttons['START']:
-                self.state |= 1 << 3
-            if self.buttons['UP']:
-                self.state |= 1 << 4
-            if self.buttons['DOWN']:
-                self.state |= 1 << 5
-            if self.buttons['LEFT']:
-                self.state |= 1 << 6
-            if self.buttons['RIGHT']:
-                self.state |= 1 << 7
+            shift = 0
+            for button in ['A', 'B', 'SELECT', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT']:
+                if self.buttons[button]:
+                    self.state |= (1 << shift)
+                shift += 1
         self.strobe = strobe
     
     def get_state_bit(self) -> int:
         """Get the current state bit and shift the register"""
-        bit = self.state & 1
-        if not self.strobe:
-            # Shift register if not in strobe mode
+        if self.strobe:
+            # When strobe is 1, return A button state
+            ret = 1 if self.buttons['A'] else 0
+        else:
+            ret = self.state & 1
             self.state >>= 1
-        return bit
+        return ret | 0x40
 
 def get_pygame_key_from_string(key_str: str):
     """Convert string representation of key to pygame key constant"""

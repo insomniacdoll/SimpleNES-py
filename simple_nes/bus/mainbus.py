@@ -21,14 +21,11 @@ JOY2 = 0x4017
 
 class MainBus:
     def __init__(self):
-        # CPU RAM: 2KB mirrored to fill 0x0000-0x1FFF
-        self.ram = [0] * 0x800  # 2KB of actual RAM
-        self.ram.extend(self.ram)  # Mirror to 0x1000
-        self.ram.extend(self.ram)  # Mirror to 0x1800
-        self.ram.extend(self.ram)  # Mirror to 0x2000
+        # CPU RAM: 2KB (0x800 bytes)
+        self.ram = [0] * 0x800
         
         # Extended RAM (for cartridges that support it)
-        self.ext_ram = [0] * 0x2000  # 8KB extended RAM
+        self.ext_ram = []
         
         # Mapper for cartridge
         self.mapper: Optional[Mapper] = None
@@ -36,13 +33,12 @@ class MainBus:
         # I/O callbacks
         self.write_callbacks: Dict[int, Callable[[int], None]] = {}
         self.read_callbacks: Dict[int, Callable[[], int]] = {}
-        
-        # APU registers placeholder
-        self.apu_regs = [0] * (0x4014 - 0x4000)
     
     def set_mapper(self, mapper: Mapper) -> bool:
         """Set the cartridge mapper"""
         self.mapper = mapper
+        if mapper and mapper.has_extended_ram():
+            self.ext_ram = [0] * 0x2000  # 8KB extended RAM
         return True
     
     def set_write_callback(self, reg: int, callback: Callable[[int], None]) -> bool:
@@ -66,29 +62,19 @@ class MainBus:
             if reg in self.read_callbacks:
                 return self.read_callbacks[reg]()
             return 0  # Default return value
-        elif addr < 0x4014:
+        elif addr < 0x4018:
             # APU registers and I/O registers
-            if addr == JOY1:
-                # Placeholder for controller 1
-                return 0xFF
-            elif addr == JOY2:
-                # Placeholder for controller 2
-                return 0xFF
-            else:
-                # Return APU register value
-                return self.apu_regs[addr - 0x4000]
-        elif addr == OAMDMA:
-            # DMA register - handled by write only
+            if addr in self.read_callbacks:
+                return self.read_callbacks[addr]()
             return 0
         elif addr < 0x6000:
-            # APU registers and I/O (0x4014-0x401F)
-            if addr == OAMDMA:
-                return 0
-            else:
-                return 0
+            # Expansion ROM (not supported)
+            return 0
         elif addr < 0x8000:
             # Save RAM
-            return self.ext_ram[addr - 0x6000]
+            if self.mapper and self.mapper.has_extended_ram():
+                return self.ext_ram[addr - 0x6000]
+            return 0
         else:
             # Cartridge ROM/PRG-ROM space
             if self.mapper:
@@ -106,25 +92,17 @@ class MainBus:
             reg = 0x2000 + (addr & 0x7)
             if reg in self.write_callbacks:
                 self.write_callbacks[reg](value)
-        elif addr < 0x4014:
+        elif addr < 0x4018:
             # APU registers and I/O registers
             if addr in self.write_callbacks:
                 self.write_callbacks[addr](value)
-            else:
-                # Store in APU registers array
-                if 0x4000 <= addr < 0x4014:
-                    self.apu_regs[addr - 0x4000] = value
-        elif addr == OAMDMA:
-            # DMA - trigger DMA transfer
-            if self.write_callbacks.get(OAMDMA):
-                self.write_callbacks[OAMDMA](value)
         elif addr < 0x6000:
-            # APU registers and I/O (0x4014-0x401F)
-            if addr in self.write_callbacks:
-                self.write_callbacks[addr](value)
+            # Expansion ROM (not supported)
+            pass
         elif addr < 0x8000:
             # Save RAM
-            self.ext_ram[addr - 0x6000] = value
+            if self.mapper and self.mapper.has_extended_ram():
+                self.ext_ram[addr - 0x6000] = value
         else:
             # Cartridge ROM/PRG-ROM space
             if self.mapper:
@@ -132,14 +110,21 @@ class MainBus:
     
     def get_page_ptr(self, page: int) -> Optional[bytes]:
         """Get a pointer to a 256-byte page of memory (for DMA)"""
-        if page < 0x20:
+        addr = page << 8
+        if addr < 0x2000:
             # RAM pages
-            start_idx = (page * 0x100) % 0x800
-            return bytes(self.ram[start_idx:start_idx + 0x100])
+            return bytes(self.ram[addr & 0x7FF:(addr & 0x7FF) + 0x100])
+        elif addr < 0x4020:
+            # Register address memory pointer access attempt
+            return None
+        elif addr < 0x6000:
+            # Expansion ROM access attempted, which is unsupported
+            return None
+        elif addr < 0x8000:
+            # Save RAM
+            if self.mapper and self.mapper.has_extended_ram():
+                return bytes(self.ext_ram[addr - 0x6000:addr - 0x6000 + 0x100])
+            return None
         else:
-            # For other pages, return from cartridge if available
-            if self.mapper:
-                # This is a simplified approach - in a real implementation
-                # we'd need to handle PRG-ROM pages
-                return bytes([self.mapper.read_prg(page * 0x100 + i) for i in range(0x100)])
+            # Unexpected DMA request
             return None

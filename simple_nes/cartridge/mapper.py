@@ -56,8 +56,9 @@ class Mapper(ABC):
 
     @staticmethod
     def create_mapper(mapper_type: int, cart: Cartridge, 
-                     interrupt_cb: Callable[[], None], 
-                     mirroring_cb: Callable[[], None]) -> 'Mapper':
+                     interrupt_cb: Callable[[], None] = None,
+                     nmi_cb: Callable[[], None] = None,
+                     mirroring_cb: Callable[[], None] = None) -> 'Mapper':
         """Factory method to create appropriate mapper instance"""
         if mapper_type == Mapper.Type.NROM:
             return NROM(cart)

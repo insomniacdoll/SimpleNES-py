@@ -117,10 +117,8 @@ def test_controller_operations():
     assert isinstance(initial_state, int)
 
 
-@patch('pygame.mixer.init')
-@patch('pygame.mixer.Channel')
 @patch('pygame.init')
-def test_apu_basic_operations(mock_pygame_init, mock_mixer_channel, mock_mixer_init):
+def test_apu_basic_operations(mock_pygame_init):
     """Test basic operations of the APU"""
     from simple_nes.apu.apu import APU
     
