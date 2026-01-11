@@ -4,7 +4,7 @@ Implements Ricoh 2A03 CPU (based on 6502)
 """
 import numpy as np
 from typing import Callable, Optional
-from ..util.logging import error, debug
+from ..util.logging import error, debug, info
 
 # Define common types
 Byte = np.uint8
@@ -43,18 +43,27 @@ class CPU:
         self.m_pendingNMI = False
         self.m_pendingIRQ = False
         
-        # Initialize CPU
-        self.reset()
+        # Note: reset() is called externally after mapper is set up
     
-    def reset(self, start_addr: Optional[Address] = None):
+    def reset(self, start_addr: Optional[Address] = None, skip_vblank_wait: bool = False):
         """Reset CPU to initial state"""
         if start_addr is None:
             # Read reset vector from memory
             lo = self.memory.read(ResetVector)
             hi = self.memory.read(ResetVector + 1)
             start_addr = int((hi << 8) | lo)
+            from ..util.logging import info
+            info(f"CPU Reset: Read reset vector from 0x{ResetVector:04X}: lo=0x{lo:02X}, hi=0x{hi:02X}, start_addr=0x{start_addr:04X}")
+        
+        # For testing: skip vblank wait loop (0x800D -> 0x8014)
+        if skip_vblank_wait and start_addr == 0x8000:
+            start_addr = 0x8014
+            from ..util.logging import info
+            info(f"CPU Reset: Skipping vblank wait, new start_addr=0x{start_addr:04X}")
         
         self.r_PC = Address(start_addr)
+        from ..util.logging import info
+        info(f"CPU Reset: PC set to 0x{int(self.r_PC):04X}")
         self.r_SP = Byte(0xFD)
         self.r_A = Byte(0)
         self.r_X = Byte(0)
@@ -86,6 +95,7 @@ class CPU:
         
         # NMI has higher priority, check for it first
         if self.m_pendingNMI:
+            debug(f"CPU: Processing NMI interrupt")
             self._interrupt_sequence('NMI')
             self.m_pendingNMI = False
             # Don't clear m_pendingIRQ here - only clear when IRQ is actually processed
@@ -93,17 +103,27 @@ class CPU:
         
         elif self.m_pendingIRQ:
             if not self.f_I:  # Only process IRQ if interrupt flag is clear
+                debug(f"CPU: Processing IRQ interrupt")
                 self._interrupt_sequence('IRQ')
                 self.m_pendingIRQ = False
                 return 7  # IRQ takes 7 cycles
             # Don't clear m_pendingIRQ if IRQ is disabled - keep it pending
         
         # Fetch opcode
+        pc_before = int(self.r_PC)
         opcode = self.memory.read(self.r_PC)
         self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
         
+        # Debug: Log instruction fetch
+        if pc_before >= 0x8000 or pc_before < 0x0100:  # Only log ROM and zero page addresses
+            info(f"CPU: Fetch opcode 0x{opcode:02X} at PC=0x{pc_before:04X}, next PC=0x{int(self.r_PC):04X}")
+        
         # Execute instruction based on opcode
         cycles = self.execute_opcode(opcode)
+        
+        # Debug: Log PC after execution
+        if pc_before >= 0x8000 or pc_before < 0x0100:
+            info(f"CPU: Executed opcode 0x{opcode:02X}, PC now=0x{int(self.r_PC):04X}")
         
         return cycles
     
@@ -151,7 +171,8 @@ class CPU:
             hi_addr = Address((addr & 0xFF00) | ((addr + 1) & 0x00FF))
             hi = self.memory.read(hi_addr)
             
-            self.r_PC = Address((hi << 8) | lo)
+            # Convert to int to avoid numpy uint8 overflow issue
+            self.r_PC = Address((int(hi) << 8) | int(lo))
             cycles = 5
         
         elif opcode == 0xA9:  # LDA immediate
@@ -181,7 +202,8 @@ class CPU:
             hi = int(self.memory.read(self.r_PC))
             self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
             addr = int((hi << 8) | lo)
-            self.r_A = self.memory.read(addr)
+            value = self.memory.read(addr)
+            self.r_A = value
             self.set_flags_ZN(self.r_A)
             cycles = 4
         
@@ -893,7 +915,7 @@ class CPU:
             hi = int(self.memory.read(self.r_PC))
             self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
             addr = int((hi << 8) | lo)
-            addr = Address(addr + self.r_X)
+            addr = Address(addr + int(self.r_X))
             self.memory.write(addr, self.r_A)
             cycles = 5
         
@@ -903,7 +925,7 @@ class CPU:
             hi = int(self.memory.read(self.r_PC))
             self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
             addr = int((hi << 8) | lo)
-            addr = Address(addr + self.r_Y)
+            addr = Address(addr + int(self.r_Y))
             self.memory.write(addr, self.r_A)
             cycles = 5
         
@@ -1565,11 +1587,15 @@ class CPU:
             # Push return address (PC-1) onto the stack (JSR's last byte address)
             # When RTS executes, it will pull this address and increment it by 1
             return_addr = self.r_PC - 1  # Address of the last byte of JSR instruction
+            info(f"JSR: Pushing return address 0x{return_addr:04X}, SP before=0x{int(self.r_SP):02X}")
             self.push_stack(Byte((return_addr >> 8) & 0xFF))  # Push high byte as Byte
+            info(f"JSR: Pushed high byte 0x{(return_addr >> 8) & 0xFF:02X}, SP now=0x{int(self.r_SP):02X}")
             self.push_stack(Byte(return_addr & 0xFF))        # Push low byte as Byte
+            info(f"JSR: Pushed low byte 0x{return_addr & 0xFF:02X}, SP now=0x{int(self.r_SP):02X}")
             
             # Jump to target address
             self.r_PC = target
+            info(f"JSR: Jumping to 0x{int(target):04X}")
             cycles = 6  # JSR takes 6 cycles
         
         elif opcode == 0x40:  # RTI - Return from Interrupt
@@ -1584,15 +1610,22 @@ class CPU:
             # Pull return address from stack
             lo = self.pull_stack()
             hi = self.pull_stack()
-            self.r_PC = Address((hi << 8) | lo)
+            # Convert to int to avoid numpy uint8 overflow issue
+            self.r_PC = Address((int(hi) << 8) | int(lo))
             cycles = 6  # RTI takes 6 cycles
         
         elif opcode == 0x60:  # RTS - Return from Subroutine
             # Pull return address from stack and add 1
+            info(f"RTS: SP before pull=0x{int(self.r_SP):02X}")
             lo = self.pull_stack()
+            info(f"RTS: Pulled low byte 0x{int(lo):02X}, SP now=0x{int(self.r_SP):02X}")
             hi = self.pull_stack()
-            self.r_PC = Address((hi << 8) | lo)
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)  # Add 1 to return address
+            info(f"RTS: Pulled high byte 0x{int(hi):02X}, SP now=0x{int(self.r_SP):02X}")
+            # Convert to int to avoid numpy uint8 overflow issue
+            return_addr = Address((int(hi) << 8) | int(lo))
+            info(f"RTS: Return address from stack=0x{return_addr:04X}")
+            self.r_PC = Address((int(return_addr) + 1) & 0xFFFF)  # Add 1 to return address
+            info(f"RTS: Final PC after adding 1=0x{int(self.r_PC):04X}")
             cycles = 6  # RTS takes 6 cycles
         
         elif opcode == 0xCC:  # CPY - Compare Y Register Absolute
@@ -1781,33 +1814,6 @@ class CPU:
             self.memory.write(zp_addr, result)
             self.set_flags_ZN(result)
             cycles = 6  # 6 cycles for zero page, X addressing with read-modify-write
-        
-        elif opcode == 0x19:  # SBC - Subtract with Carry Absolute, Y
-            lo = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            hi = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            addr = int((hi << 8) | lo)
-            addr_with_y = Address(addr + self.r_Y)
-            
-            value = self.memory.read(addr_with_y)
-            # Check for page boundary crossing
-            if (addr & 0xFF00) != (addr_with_y & 0xFF00):
-                cycles = 5  # Extra cycle for page crossing (not counting the base cycles)
-            else:
-                cycles = 4  # Base cycles for absolute,Y addressing
-            
-            # SBC: A - M - (1 - C), following C++ implementation
-            # High carry means "no borrow", thus negate and subtract
-            diff = int(self.r_A) - int(value) - (1 - int(self.f_C))
-            # if the ninth bit is 1, the resulting number is negative => borrow => low carry
-            self.f_C = not bool(diff & 0x100)
-            # Same as ADC, except instead of the subtrahend, substitute with it's one complement
-            # Calculate overflow: (A^result) & (M^result) & 0x80 (for SBC it's (A^result) & (~M^result) & 0x80)
-            # To avoid issues with Python's ~ operator with negative numbers, use 0xFF ^ value instead
-            self.f_V = ((int(self.r_A) ^ diff) & ((0xFF ^ int(value)) ^ diff) & 0x80) != 0
-            self.r_A = Byte(diff & 0xFF)
-            self.set_flags_ZN(self.r_A)
         
         elif opcode == 0xED:  # SBC - Subtract with Carry Absolute
             lo = int(self.memory.read(self.r_PC))

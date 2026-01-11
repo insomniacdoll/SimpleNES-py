@@ -61,8 +61,8 @@ class Emulator:
         # Create CPU with main bus
         self.cpu = CPU(self.bus)
         
-        # Create APU for audio
-        self.apu = APU()
+        # Create APU for audio with IRQ callback
+        self.apu = APU(irq_callback=self._irq_interrupt)
         
         # Initialize controller manager with config
         self.controller_manager = ControllerManager(config_path)
@@ -101,6 +101,95 @@ class Emulator:
         
         # Set up APU callbacks
         self._setup_apu_callbacks()
+        
+        # Debug: Check if CPU is writing to PPU registers
+        debug_ppu_writes = []
+        original_write_callback = self.bus.set_write_callback
+        
+        def make_ppu_write_callback(addr):
+            def callback(value):
+                if 0x2000 <= addr <= 0x2007:
+                    debug_ppu_writes.append((addr, value))
+                    info(f"CPU wrote to PPU register 0x{addr:04x} = 0x{value:02x}")
+                original_write_callback(addr, value)
+            return callback
+        
+        # Override PPU register write callbacks to add debug output
+        for addr in range(0x2000, 0x2008):
+            self.bus.set_write_callback(addr, make_ppu_write_callback(addr))
+        
+        # Debug: Check if CPU is reading PPUSTATUS
+        ppu_status_reads = 0
+        original_ppustatus_callback = self.bus.read_callbacks.get(0x2002)
+        info(f"original_ppustatus_callback: {original_ppustatus_callback}")
+        
+        def make_ppustatus_read_callback():
+            nonlocal ppu_status_reads
+            ppu_status_reads += 1
+            if original_ppustatus_callback:
+                value = original_ppustatus_callback()
+                vblank_flag = (value >> 7) & 1
+                if ppu_status_reads % 100 == 0:
+                    info(f"CPU read PPUSTATUS {ppu_status_reads} times, value=0x{value:02X}, vblank={vblank_flag}")
+                return value
+            else:
+                info(f"ERROR: original_ppustatus_callback is None!")
+                return 0
+        
+        # Override PPUSTATUS read callback
+        self.bus.set_read_callback(0x2002, make_ppustatus_read_callback)
+        
+        # Debug: Track CPU execution
+        cpu_cycle_count = 0
+        last_debug_cycle = 0
+        last_pc = None
+        pc_repeat_count = 0
+        instruction_count = {}
+        
+        # Wrap CPU step to track execution
+        original_cpu_step = self.cpu.step
+        def wrapped_cpu_step():
+            nonlocal cpu_cycle_count, last_debug_cycle, last_pc, pc_repeat_count, instruction_count
+            cpu_cycle_count += 1
+            
+            # Check if PC is stuck
+            current_pc = self.cpu.r_PC
+            if current_pc == last_pc:
+                pc_repeat_count += 1
+                if pc_repeat_count >= 1000:
+                    info(f"CPU is stuck at PC=0x{current_pc:04X}")
+            else:
+                pc_repeat_count = 0
+                last_pc = current_pc
+            
+            if cpu_cycle_count - last_debug_cycle >= 100:
+                info(f"CPU executed {cpu_cycle_count} cycles, PC=0x{current_pc:04X}")
+                last_debug_cycle = cpu_cycle_count
+            original_cpu_step()
+        
+        self.cpu.step = wrapped_cpu_step
+        
+        # Wrap CPU execute_opcode to track instruction execution
+        original_execute_opcode = self.cpu.execute_opcode
+        def wrapped_execute_opcode(opcode):
+            nonlocal instruction_count
+            if opcode not in instruction_count:
+                instruction_count[opcode] = 0
+            instruction_count[opcode] += 1
+            
+            # Debug: Log BRK instruction
+            if opcode == 0x00:  # BRK
+                pc = self.cpu.r_PC
+                info(f"CPU executing BRK at PC=0x{pc:04X}")
+            
+            # Debug: Log all instructions at PC >= 0xFF00
+            pc = self.cpu.r_PC
+            if pc >= 0xFF00:
+                info(f"CPU executing at PC=0x{pc:04X}, opcode=0x{opcode:02X}")
+            
+            return original_execute_opcode(opcode)
+        
+        self.cpu.execute_opcode = wrapped_execute_opcode
     
     def _setup_apu_callbacks(self):
         """Set up callbacks for APU registers"""
@@ -150,6 +239,7 @@ class Emulator:
     
     def _nmi_interrupt(self):
         """Handle NMI interrupt from PPU"""
+        info(f"NMI interrupt triggered! generate_interrupt={self.ppu.generate_interrupt}, vblank={self.ppu.vblank}")
         self.cpu.interrupt('NMI')
     
     def _irq_interrupt(self):
@@ -235,19 +325,36 @@ class Emulator:
         self.picture_bus.mapper = self.mapper
         
         # Reset CPU to start execution
-        self.cpu.reset()
+        self.cpu.reset(skip_vblank_wait=False)
         
         info("ROM loaded and emulator reset successfully")
         return True
     
     def run(self, rom_path: str):
-        """Main emulation loop"""
+        """Main emulation loop - time-driven like C++ version"""
         if not self.load_rom(rom_path):
             error(f"Failed to load ROM: {rom_path}")
             return
         
         info("Starting emulation...")
         
+        # Create window
+        self.screen_width = NES_VIDEO_WIDTH * self.screen_scale
+        self.screen_height = NES_VIDEO_HEIGHT * self.screen_scale
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption("SimpleNES-py")
+        
+# Clock constants (matching C++ implementation)
+        # NES CPU: ~1.7898 MHz (NTSC)
+        # NES PPU: ~5.369 MHz (3x CPU speed)
+        # Frame: 60 FPS
+        cpu_clock_period_ns = 559  # ~1.7898 MHz
+        cpu_clock_period_s = cpu_clock_period_ns / 1e9
+        max_cycles_per_frame = 29781  # One frame worth of cycles (NTSC: ~29780.5 CPU cycles per frame)
+        
+        # Timing variables
+        last_wakeup = time.perf_counter()
+        elapsed_time = 0.0
         running = True
         frame_count = 0
         
@@ -265,34 +372,44 @@ class Emulator:
             # Update controller states based on current keys
             self.controller_manager.update_controller_states()
             
-            # Emulation loop - run CPU and PPU cycles
-            # NES CPU: ~1.79 MHz
-            # NES PPU: ~5.37 MHz (3x CPU speed)
-            # APU also runs at CPU frequency
-            cpu_cycles = 0
-            target_cpu_cycles = int(1.7898 * 10**6 / self.target_fps)  # Cycles per frame
+            # Calculate elapsed time since last frame
+            now = time.perf_counter()
+            elapsed_time += now - last_wakeup
+            last_wakeup = now
             
-            # Run CPU for a frame's worth of cycles
-            while cpu_cycles < target_cpu_cycles:
-                # Run PPU cycles (3x CPU cycles) - BEFORE CPU step (matching C++ implementation)
-                for _ in range(3):
-                    self.ppu.step()
-                    
-                    # Check for PPU scanline-based interrupts (for MMC3, etc.)
-                    if self.mapper:
-                        self.mapper.scanline_irq()
+            # Ensure elapsed_time is at least enough for one frame
+            if elapsed_time < cpu_clock_period_s * max_cycles_per_frame:
+                elapsed_time = cpu_clock_period_s * max_cycles_per_frame
+            
+            # Run emulation for elapsed time
+            # This is the time-driven approach matching C++ implementation
+            # We need to run enough cycles for PPU to complete at least one full frame
+            max_cycles_per_frame = 29781  # One frame worth of cycles (NTSC: ~29780.5 CPU cycles per frame)
+            cycles_this_frame = 0
+            
+            # Continue executing for max_cycles_per_frame cycles
+            while elapsed_time > cpu_clock_period_s and cycles_this_frame < max_cycles_per_frame:
+                # PPU (3 cycles per CPU cycle)
+                self.ppu.step()
+                self.ppu.step()
+                self.ppu.step()
                 
-                # Execute one CPU instruction
-                cycles = self.cpu.step()
-                cpu_cycles += cycles
+                # Check for PPU scanline-based interrupts (for MMC3, etc.)
+                if self.mapper:
+                    self.mapper.scanline_irq()
                 
-                # Run APU cycles (same as CPU cycles)
-                for _ in range(cycles):
-                    self.apu.step()
+                # CPU (1 cycle)
+                self.cpu.step()
                 
-                # Run additional PPU cycles for multi-cycle instructions (cycles-1 extra cycles)
-                for _ in range((cycles - 1) * 3):
-                    self.ppu.step()
+                # APU (1 cycle)
+                self.apu.step()
+                
+                elapsed_time -= cpu_clock_period_s
+                cycles_this_frame += 1
+            
+            # If we hit the cycle limit, reset elapsed_time to prevent accumulation
+            if cycles_this_frame >= max_cycles_per_frame:
+                elapsed_time = 0
             
             # Render frame
             self._render_frame()
@@ -300,10 +417,6 @@ class Emulator:
             # Control frame rate
             self.clock.tick(self.target_fps)
             frame_count += 1
-            
-            # Print status occasionally
-            if frame_count % 3600 == 0:  # Every 60 seconds at 60 FPS
-                info(f"Emulation running... Frame: {frame_count}")
         
         info("Emulator shutting down...")
         pygame.quit()
@@ -311,5 +424,7 @@ class Emulator:
     
     def _render_frame(self):
         """Render the current frame to the screen"""
+        from ..util.logging import info
+        info(f"Rendering frame")
         # Use the renderer to update the display
         self.renderer.update_display(self.screen, self.screen_scale)

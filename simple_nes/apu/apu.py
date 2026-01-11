@@ -7,7 +7,10 @@ import numpy as np
 from typing import Callable
 
 class APU:
-    def __init__(self):
+    def __init__(self, irq_callback: Callable[[], None] = None):
+        # IRQ callback for frame counter interrupts
+        self.irq_callback = irq_callback
+        
         # Check if pygame mixer module is available
         self.mixer_available = hasattr(pygame, 'mixer')
         if self.mixer_available:
@@ -135,7 +138,10 @@ class APU:
                 self._quarter_frame_update()
                 self._half_frame_update()
                 self.frame_interrupt = True  # Generate interrupt
-                # Note: In a complete implementation, this would trigger IRQ
+                # Trigger IRQ if not inhibited and callback is set
+                # Temporarily disabled for testing
+                # if not self.interrupt_inhibit and self.irq_callback:
+                #     self.irq_callback()
             elif self.frame_counter == seq4step_length:
                 self.frame_counter = 0  # Reset counter
         else:

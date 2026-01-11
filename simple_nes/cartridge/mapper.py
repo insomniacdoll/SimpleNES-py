@@ -103,7 +103,12 @@ class NROM(Mapper):
                 # 2 or more banks
                 effective_addr = effective_addr % len(self.cartridge.get_rom())
             if effective_addr < len(self.cartridge.get_rom()):
-                return self.cartridge.get_rom()[effective_addr]
+                value = self.cartridge.get_rom()[effective_addr]
+                # Debug: Log reads from vector table area
+                if 0xFFFA <= addr <= 0xFFFF:
+                    from ..util.logging import info
+                    info(f"NROM: Reading addr=0x{addr:04X}, effective_addr=0x{effective_addr:04X}, value=0x{value:02X}")
+                return value
         elif addr >= 0x6000:
             # PRG RAM space
             # This is handled by the main bus for save RAM
