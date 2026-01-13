@@ -569,7 +569,7 @@ def test_ppu_mmc3_irq():
         nonlocal irq_called
         irq_called = True
     
-    bus.scanlineIRQ = mock_irq
+    bus.scanline_irq = mock_irq
     
     # Set up for MMC3 IRQ
     # IRQ is triggered at cycle 260 in PreRender state

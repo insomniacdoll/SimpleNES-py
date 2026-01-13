@@ -137,23 +137,22 @@ class PPU:
             
             # If rendering is on, every other frame is one cycle shorter
             skip_cycle = (not self.even_frame) and self.show_background and self.show_sprites
+            
+            # Add IRQ support for MMC3 - check BEFORE state transition
+            if self.cycle == 260 and self.show_background and self.show_sprites:
+                if hasattr(self.bus, 'scanline_irq'):
+                    self.bus.scanline_irq()
+            
             if self.cycle >= ScanlineEndCycle - (1 if skip_cycle else 0):
                 self.pipeline_state = 1  # Render
                 self.cycle = 0
                 self.scanline = 0
-                info(f"PPU: PreRender -> Render (scanline={self.scanline}, cycle={self.cycle})")
-                return
-            
-            # Add IRQ support for MMC3
-            if self.cycle == 260 and self.show_background and self.show_sprites:
-                if hasattr(self.bus, 'scanline_irq'):
-                    self.bus.scanline_irq()
+                self.cycle += 1  # Increment cycle after state transition
+            else:
+                self.cycle += 1
+            return
         
         elif self.pipeline_state == 1:  # Render
-            # Debug: Log first pixel of each frame
-            if self.cycle == 1 and self.scanline == 0:
-                info(f"PPU: Starting Render state, show_bg={self.show_background}, show_spr={self.show_sprites}")
-            
             if self.cycle > 0 and self.cycle <= ScanlineVisibleDots:
                 bg_color = 0
                 spr_color = 0
@@ -164,20 +163,12 @@ class PPU:
                 x = self.cycle - 1
                 y = self.scanline
                 
-                # Debug: Log first few pixels
-                if self.scanline == 0 and self.cycle <= 5:
-                    info(f"PPU: Rendering pixel ({x}, {y}), show_bg={self.show_background}, show_spr={self.show_sprites}")
-                
                 if self.show_background:
                     x_fine = (self.fine_x_scroll + x) % 8
                     if not self.hide_edge_background or x >= 8:
                         # Fetch tile
                         addr = 0x2000 | (self.data_address & 0x0FFF)
                         tile = self._read(addr)
-                        
-                        # Debug: Log first few tiles
-                        if self.scanline == 0 and self.cycle <= 5:
-                            info(f"PPU: Reading tile at addr=0x{addr:04X}, tile=0x{tile:02X}")
                         
                         # Fetch pattern
                         addr = (tile * 16) + ((self.data_address >> 12) & 0x7)
@@ -189,19 +180,11 @@ class PPU:
                         
                         bg_opaque = bool(bg_color)
                         
-                        # Debug: Log pattern reads
-                        if self.scanline == 0 and self.cycle <= 5:
-                            info(f"PPU: Pattern at addr=0x{addr:04X}: pattern0=0x{pattern0:02X}, pattern1=0x{pattern1:02X}, bg_color={bg_color}")
-                        
                         # Fetch attribute and calculate higher two bits of palette
                         addr = 0x23C0 | (self.data_address & 0x0C00) | ((self.data_address >> 4) & 0x38) | ((self.data_address >> 2) & 0x07)
                         attribute = self._read(addr)
                         shift = ((self.data_address >> 4) & 4) | (self.data_address & 2)
                         bg_color |= ((attribute >> shift) & 0x3) << 2
-                        
-                        # Debug: Log attribute
-                        if self.scanline == 0 and self.cycle <= 5:
-                            info(f"PPU: Attribute at addr=0x{addr:04X}: attribute=0x{attribute:02X}, bg_color={bg_color}")
                     
                     # Increment/wrap coarse X
                     if x_fine == 7:
@@ -327,41 +310,36 @@ class PPU:
                 self.scanline += 1
                 self.cycle = 0
                 
-                info(f"PPU: End of scanline {self.scanline-1}, new scanline {self.scanline}, show_bg={self.show_background}, show_spr={self.show_sprites}")
-                
                 # Check if we've finished rendering all visible scanlines
                 if self.scanline >= VisibleScanlines:
                     self.pipeline_state = 2  # PostRender
-                    info(f"PPU: Render -> PostRender (scanline={self.scanline}, cycle={self.cycle})")
-                
-                # Return after handling end of scanline to avoid extra cycle increment
-                return
+                self.cycle += 1  # Increment cycle after scanline completion
+            else:
+                self.cycle += 1
+            return
         
         elif self.pipeline_state == 2:  # PostRender
             if self.cycle >= ScanlineEndCycle:
                 self.scanline += 1
                 self.cycle = 0
                 self.pipeline_state = 3  # VerticalBlank
-                info(f"PPU: PostRender -> VerticalBlank (scanline={self.scanline}, cycle={self.cycle})")
                 
                 # Copy picture buffer to screen at the end of PostRender
                 # Note: picture_buffer shape is (ScanlineVisibleDots, VisibleScanlines, 3)
                 # Indexed as [x, y, channel]
-                info(f"PPU: Copying picture buffer to screen, buffer shape={self.picture_buffer.shape}")
                 for x in range(self.picture_buffer.shape[0]):
                     for y in range(self.picture_buffer.shape[1]):
                         color = self.picture_buffer[x, y]
-                        if not np.array_equal(color, [0, 0, 0]):  # Log non-black pixels
-                            info(f"PPU: Non-black pixel at ({x}, {y}): {color}")
                         self.screen.set_pixel(x, y, color)
-                info(f"PPU: Finished copying picture buffer to screen")
-                return
+                self.cycle += 1  # Increment cycle after state transition
+            else:
+                self.cycle += 1
+            return
         
         elif self.pipeline_state == 3:  # VerticalBlank
             # Set vblank flag at cycle 1 of scanline 241 (VisibleScanlines + 1)
             if self.cycle == 1 and self.scanline == VisibleScanlines + 1:
                 self.vblank = True
-                info(f"PPU: vblank set to True at scanline={self.scanline}, cycle={self.cycle}")
                 if self.generate_interrupt and self.vblank_callback:
                     self.vblank_callback()
             
@@ -374,9 +352,10 @@ class PPU:
                     self.scanline = 0
                     self.even_frame = not self.even_frame
                     info(f"PPU: VerticalBlank -> PreRender (scanline={self.scanline}, cycle={self.cycle})")
-                return
-        
-        self.cycle += 1
+                self.cycle += 1  # Increment cycle after state transition
+            else:
+                self.cycle += 1
+            return
     
     def _read(self, addr: int) -> int:
         """Read from PPU address space"""
@@ -417,10 +396,8 @@ class PPU:
     def get_status(self) -> int:
         """Read from PPUSTATUS register (0x2002)"""
         status = (self.sprite_overflow << 5) | (self.spr_zero_hit << 6) | (self.vblank << 7)
-        vblank_flag_before = self.vblank
         self.vblank = False
         self.first_write = True
-        info(f"PPU: get_status() called, vblank flag was {vblank_flag_before}, status=0x{status:02X}")
         return status
     
     def set_data_address(self, addr: int):

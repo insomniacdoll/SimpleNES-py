@@ -9,8 +9,8 @@ from ..bus.mainbus import MainBus
 from ..cartridge.mapper import Mapper
 
 class Renderer:
-    def __init__(self, ppu: PPU, screen_width: int = 256, screen_height: int = 240):
-        self.ppu = ppu
+    def __init__(self, virtual_screen, screen_width: int = 256, screen_height: int = 240):
+        self.virtual_screen = virtual_screen
         self.screen_width = screen_width
         self.screen_height = screen_height
         
@@ -43,19 +43,19 @@ class Renderer:
         return palette
     
     def render_frame(self):
-        """Render a complete frame from PPU data"""
-        # Get the picture buffer from PPU
-        picture_buffer = self.ppu.picture_buffer
+        """Render a complete frame from virtual screen data"""
+        # Get the buffer from virtual screen
+        screen_buffer = self.virtual_screen.buffer
         
-        # Convert the PPU buffer to a pygame surface
+        # Convert the screen buffer to a pygame surface
         # Create a temporary surface to hold the raw pixel data
         temp_surface = pygame.Surface((self.screen_width, self.screen_height))
         
-        # Copy pixels from PPU buffer to pygame surface
+        # Copy pixels from screen buffer to pygame surface
         for y in range(self.screen_height):
             for x in range(self.screen_width):
-                # Get RGB values from picture buffer
-                r, g, b = picture_buffer[x, y]
+                # Get RGB values from screen buffer
+                r, g, b = screen_buffer[y, x]
                 color = (int(r), int(g), int(b))
                 temp_surface.set_at((x, y), color)
         
@@ -162,17 +162,8 @@ class PictureBus:
         if addr < 0x2000:
             # Pattern table access - goes to cartridge CHR ROM/RAM
             if self.mapper:
-                value = self.mapper.read_chr(addr)
-                # Debug: Log first few pattern table reads
-                if addr < 0x0010:
-                    from ..util.logging import info
-                    info(f"PictureBus: Reading CHR at addr=0x{addr:04X}, value=0x{value:02X}")
-                return value
+                return self.mapper.read_chr(addr)
             else:
-                # Debug: Log if mapper is None
-                if addr < 0x0010:
-                    from ..util.logging import info
-                    info(f"PictureBus: Mapper is None, returning 0 for addr=0x{addr:04X}")
                 return 0
         elif addr <= 0x3EFF:
             # Name tables up to 0x3000, then mirrored up to 0x3EFF

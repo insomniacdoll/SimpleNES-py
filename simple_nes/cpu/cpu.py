@@ -52,18 +52,12 @@ class CPU:
             lo = self.memory.read(ResetVector)
             hi = self.memory.read(ResetVector + 1)
             start_addr = int((hi << 8) | lo)
-            from ..util.logging import info
-            info(f"CPU Reset: Read reset vector from 0x{ResetVector:04X}: lo=0x{lo:02X}, hi=0x{hi:02X}, start_addr=0x{start_addr:04X}")
         
         # For testing: skip vblank wait loop (0x800D -> 0x8014)
         if skip_vblank_wait and start_addr == 0x8000:
             start_addr = 0x8014
-            from ..util.logging import info
-            info(f"CPU Reset: Skipping vblank wait, new start_addr=0x{start_addr:04X}")
         
         self.r_PC = Address(start_addr)
-        from ..util.logging import info
-        info(f"CPU Reset: PC set to 0x{int(self.r_PC):04X}")
         self.r_SP = Byte(0xFD)
         self.r_A = Byte(0)
         self.r_X = Byte(0)
@@ -95,7 +89,6 @@ class CPU:
         
         # NMI has higher priority, check for it first
         if self.m_pendingNMI:
-            debug(f"CPU: Processing NMI interrupt")
             self._interrupt_sequence('NMI')
             self.m_pendingNMI = False
             # Don't clear m_pendingIRQ here - only clear when IRQ is actually processed
@@ -103,27 +96,17 @@ class CPU:
         
         elif self.m_pendingIRQ:
             if not self.f_I:  # Only process IRQ if interrupt flag is clear
-                debug(f"CPU: Processing IRQ interrupt")
                 self._interrupt_sequence('IRQ')
                 self.m_pendingIRQ = False
                 return 7  # IRQ takes 7 cycles
             # Don't clear m_pendingIRQ if IRQ is disabled - keep it pending
         
         # Fetch opcode
-        pc_before = int(self.r_PC)
         opcode = self.memory.read(self.r_PC)
         self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
         
-        # Debug: Log instruction fetch
-        if pc_before >= 0x8000 or pc_before < 0x0100:  # Only log ROM and zero page addresses
-            info(f"CPU: Fetch opcode 0x{opcode:02X} at PC=0x{pc_before:04X}, next PC=0x{int(self.r_PC):04X}")
-        
         # Execute instruction based on opcode
         cycles = self.execute_opcode(opcode)
-        
-        # Debug: Log PC after execution
-        if pc_before >= 0x8000 or pc_before < 0x0100:
-            info(f"CPU: Executed opcode 0x{opcode:02X}, PC now=0x{int(self.r_PC):04X}")
         
         return cycles
     
@@ -1587,15 +1570,11 @@ class CPU:
             # Push return address (PC-1) onto the stack (JSR's last byte address)
             # When RTS executes, it will pull this address and increment it by 1
             return_addr = self.r_PC - 1  # Address of the last byte of JSR instruction
-            info(f"JSR: Pushing return address 0x{return_addr:04X}, SP before=0x{int(self.r_SP):02X}")
             self.push_stack(Byte((return_addr >> 8) & 0xFF))  # Push high byte as Byte
-            info(f"JSR: Pushed high byte 0x{(return_addr >> 8) & 0xFF:02X}, SP now=0x{int(self.r_SP):02X}")
             self.push_stack(Byte(return_addr & 0xFF))        # Push low byte as Byte
-            info(f"JSR: Pushed low byte 0x{return_addr & 0xFF:02X}, SP now=0x{int(self.r_SP):02X}")
             
             # Jump to target address
             self.r_PC = target
-            info(f"JSR: Jumping to 0x{int(target):04X}")
             cycles = 6  # JSR takes 6 cycles
         
         elif opcode == 0x40:  # RTI - Return from Interrupt
@@ -1616,16 +1595,11 @@ class CPU:
         
         elif opcode == 0x60:  # RTS - Return from Subroutine
             # Pull return address from stack and add 1
-            info(f"RTS: SP before pull=0x{int(self.r_SP):02X}")
             lo = self.pull_stack()
-            info(f"RTS: Pulled low byte 0x{int(lo):02X}, SP now=0x{int(self.r_SP):02X}")
             hi = self.pull_stack()
-            info(f"RTS: Pulled high byte 0x{int(hi):02X}, SP now=0x{int(self.r_SP):02X}")
             # Convert to int to avoid numpy uint8 overflow issue
             return_addr = Address((int(hi) << 8) | int(lo))
-            info(f"RTS: Return address from stack=0x{return_addr:04X}")
             self.r_PC = Address((int(return_addr) + 1) & 0xFFFF)  # Add 1 to return address
-            info(f"RTS: Final PC after adding 1=0x{int(self.r_PC):04X}")
             cycles = 6  # RTS takes 6 cycles
         
         elif opcode == 0xCC:  # CPY - Compare Y Register Absolute
