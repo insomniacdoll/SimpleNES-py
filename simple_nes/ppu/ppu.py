@@ -4,7 +4,7 @@ Implements the NES PPU (RP2C02) based on SimpleNES C++ implementation
 """
 import numpy as np
 from typing import Callable, Optional, List
-from ..util.logging import info
+from ..util.logging import info, debug
 
 # PPU Constants
 ScanlineCycleLength = 341
@@ -351,7 +351,7 @@ class PPU:
                     self.pipeline_state = 0  # PreRender
                     self.scanline = 0
                     self.even_frame = not self.even_frame
-                    info(f"PPU: VerticalBlank -> PreRender (scanline={self.scanline}, cycle={self.cycle})")
+                    debug(f"PPU: VerticalBlank -> PreRender (scanline={self.scanline}, cycle={self.cycle})")
                 self.cycle += 1  # Increment cycle after state transition
             else:
                 self.cycle += 1

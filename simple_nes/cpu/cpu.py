@@ -416,12 +416,12 @@ class CPU:
             cycles = 2
         
         elif opcode == 0xE8:  # INX
-            self.r_X = Byte(self.r_X + 1)
+            self.r_X = Byte((int(self.r_X) + 1) & 0xFF)
             self.set_flags_ZN(self.r_X)
             cycles = 2
         
         elif opcode == 0xC8:  # INY
-            self.r_Y = Byte(self.r_Y + 1)
+            self.r_Y = Byte((int(self.r_Y) + 1) & 0xFF)
             self.set_flags_ZN(self.r_Y)
             cycles = 2
         
@@ -1425,23 +1425,7 @@ class CPU:
             self.memory.write(addr, result)
             self.set_flags_ZN(result)
             cycles = 7
-        
-        elif opcode == 0x25:  # AND zero page
-            addr = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            value = self.memory.read(addr)
-            self.r_A = Byte(self.r_A & value)
-            self.set_flags_ZN(self.r_A)
-            cycles = 3
-        
-        elif opcode == 0x45:  # EOR zero page
-            addr = int(self.memory.read(self.r_PC))
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            value = self.memory.read(addr)
-            self.r_A = Byte(self.r_A ^ value)
-            self.set_flags_ZN(self.r_A)
-            cycles = 3
-        
+
         elif opcode == 0x9A:  # TXS - Transfer X to Stack Pointer
             self.r_SP = self.r_X
             cycles = 2
@@ -1652,27 +1636,7 @@ class CPU:
                 self.r_PC = target
             else:
                 cycles = 2  # 2 cycles if branch not taken
-        
-        elif opcode == 0xB0:  # BCS - Branch if Carry Set
-            offset = self.memory.read(self.r_PC)
-            self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-            if self.f_C:  # If carry flag is set, branch
-                # Calculate target address with sign extension
-                if offset & 0x80:  # If offset is negative (signed)
-                    # Convert to signed 8-bit (-128 to 127) then add to PC
-                    signed_offset = offset - 0x100  # Convert unsigned byte to signed value
-                    target = Address((int(self.r_PC) + signed_offset) & 0xFFFF)
-                else:
-                    target = Address((int(self.r_PC) + offset) & 0xFFFF)
-                # Page boundary check: extra cycle if crossing page boundary
-                if (self.r_PC & 0xFF00) != (target & 0xFF00):
-                    cycles = 4  # Extra cycle for page crossing
-                else:
-                    cycles = 3  # Base cycles
-                self.r_PC = target
-            else:
-                cycles = 2  # 2 cycles if branch not taken
-        
+
         elif opcode == 0xF0:  # BEQ - Branch if Equal (Zero flag set)
             offset = self.memory.read(self.r_PC)
             self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
