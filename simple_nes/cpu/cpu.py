@@ -77,38 +77,45 @@ class CPU:
         self.m_pendingIRQ = False
     
     def step(self):
-        """Execute a single CPU instruction"""
+        """
+        Execute a single CPU cycle (cycle-driven model matching C++ implementation).
+        Each call advances exactly 1 CPU cycle.
+        Returns None - callers MUST NOT depend on return value.
+        """
         self.m_cycles += 1
-        
-        # Handle cycle skipping (for DMA, etc.)
+
+        # Handle cycle skipping (for DMA, multi-cycle instructions, etc.)
+        # Match C++: if (m_skipCycles-- > 1) return;
         if self.m_skipCycles > 1:
             self.m_skipCycles -= 1
-            return 1
-        
+            return  # Skip this cycle, don't execute anything
         self.m_skipCycles = 0
-        
+
         # NMI has higher priority, check for it first
         if self.m_pendingNMI:
             self._interrupt_sequence('NMI')
             self.m_pendingNMI = False
             # Don't clear m_pendingIRQ here - only clear when IRQ is actually processed
-            return 7  # NMI takes 7 cycles
-        
+            self.m_skipCycles += 7  # NMI takes 7 cycles
+            return
+
         elif self.m_pendingIRQ:
             if not self.f_I:  # Only process IRQ if interrupt flag is clear
                 self._interrupt_sequence('IRQ')
                 self.m_pendingIRQ = False
-                return 7  # IRQ takes 7 cycles
+                self.m_skipCycles += 7  # IRQ takes 7 cycles
+                return
             # Don't clear m_pendingIRQ if IRQ is disabled - keep it pending
-        
+
         # Fetch opcode
         opcode = self.memory.read(self.r_PC)
         self.r_PC = Address((int(self.r_PC) + 1) & 0xFFFF)
-        
+
         # Execute instruction based on opcode
         cycles = self.execute_opcode(opcode)
-        
-        return cycles
+
+        # Add instruction cycles to skip counter (cycle-driven model)
+        self.m_skipCycles += cycles
     
     def execute_opcode(self, opcode: Byte):
         """Execute a single opcode"""

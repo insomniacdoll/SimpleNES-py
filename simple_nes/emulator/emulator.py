@@ -236,7 +236,13 @@ class Emulator:
         
         # Reset CPU to start execution
         self.cpu.reset(skip_vblank_wait=False)
-        
+
+        # Reset PPU (matching C++ Emulator.cpp:43-44)
+        self.ppu.reset()
+
+        # Log initial CPU PC after reset
+        info(f"CPU reset complete, initial PC: 0x{self.cpu.r_PC:04X}")
+
         info("ROM loaded and emulator reset successfully")
         return True
     
@@ -267,7 +273,12 @@ class Emulator:
         elapsed_time = 0.0
         running = True
         frame_count = 0
-        
+
+        # Diagnostic logging variables
+        prev_pipeline_state = self.ppu.pipeline_state
+        instruction_log_count = 0
+        max_instruction_logs = 10  # Only log first 10 opcode fetches
+
         while running:
             # Handle events
             for event in pygame.event.get():
@@ -298,26 +309,34 @@ class Emulator:
                 self.ppu.step()
                 self.ppu.step()
                 self.ppu.step()
-                
-                # Check for PPU scanline-based interrupts (for MMC3, etc.)
-                if self.mapper:
-                    self.mapper.scanline_irq()
-                
+
+                # Log PPU state transitions (edge-trigger only)
+                if self.ppu.pipeline_state != prev_pipeline_state:
+                    state_names = ['PreRender', 'Render', 'PostRender', 'VerticalBlank']
+                    prev_name = state_names[prev_pipeline_state] if prev_pipeline_state < len(state_names) else str(prev_pipeline_state)
+                    curr_name = state_names[self.ppu.pipeline_state] if self.ppu.pipeline_state < len(state_names) else str(self.ppu.pipeline_state)
+                    debug(f"PPU state: {prev_name} -> {curr_name} (scanline={self.ppu.scanline})")
+                    prev_pipeline_state = self.ppu.pipeline_state
+
                 # CPU (1 cycle)
                 self.cpu.step()
-                
+
                 # APU (1 cycle)
                 self.apu.step()
-                
+
                 elapsed_time -= cpu_clock_period_s
                 cycles_this_frame += 1
-            
+
             # Render frame
             self._render_frame()
-            
+
             # Control frame rate - this adds the necessary delay
             self.clock.tick(self.target_fps)
             frame_count += 1
+
+            # Log frame count every 60 frames
+            if frame_count % 60 == 0:
+                info(f"Frame {frame_count}: PPU state={self.ppu.pipeline_state}, CPU cycles={self.cpu.m_cycles}")
         
         info("Emulator shutting down...")
         pygame.quit()
