@@ -24,9 +24,6 @@ class MainBus:
         # CPU RAM: 2KB (0x800 bytes)
         self.ram = [0] * 0x800
         
-        # Extended RAM (for cartridges that support it)
-        self.ext_ram = []
-        
         # Mapper for cartridge
         self.mapper: Optional[Mapper] = None
         
@@ -37,8 +34,6 @@ class MainBus:
     def set_mapper(self, mapper: Mapper) -> bool:
         """Set the cartridge mapper"""
         self.mapper = mapper
-        if mapper and mapper.has_extended_ram():
-            self.ext_ram = [0] * 0x2000  # 8KB extended RAM
         return True
     
     def set_write_callback(self, reg: int, callback: Callable[[int], None]) -> bool:
@@ -71,12 +66,12 @@ class MainBus:
             # Expansion ROM (not supported)
             return 0
         elif addr < 0x8000:
-            # Save RAM
-            if self.mapper and self.mapper.has_extended_ram():
-                return self.ext_ram[addr - 0x6000]
+            # PRG-RAM: delegate to mapper
+            if self.mapper:
+                return self.mapper.read_prg(addr)
             return 0
         else:
-            # Cartridge ROM/PRG-ROM space
+            # PRG-ROM: delegate to mapper
             if self.mapper:
                 return self.mapper.read_prg(addr)
             else:
@@ -100,11 +95,11 @@ class MainBus:
             # Expansion ROM (not supported)
             pass
         elif addr < 0x8000:
-            # Save RAM
-            if self.mapper and self.mapper.has_extended_ram():
-                self.ext_ram[addr - 0x6000] = value
+            # PRG-RAM: delegate to mapper
+            if self.mapper:
+                self.mapper.write_prg(addr, value)
         else:
-            # Cartridge ROM/PRG-ROM space
+            # PRG-ROM registers: delegate to mapper
             if self.mapper:
                 self.mapper.write_prg(addr, value)
     
@@ -115,16 +110,20 @@ class MainBus:
             # RAM pages
             return bytes(self.ram[addr & 0x7FF:(addr & 0x7FF) + 0x100])
         elif addr < 0x4020:
-            # Register address memory pointer access attempt
+            # Register address - cannot DMA
             return None
         elif addr < 0x6000:
-            # Expansion ROM access attempted, which is unsupported
+            # Expansion ROM - unsupported
             return None
         elif addr < 0x8000:
-            # Save RAM
+            # PRG-RAM: delegate to mapper or use cartridge ext_ram
             if self.mapper and self.mapper.has_extended_ram():
-                return bytes(self.ext_ram[addr - 0x6000:addr - 0x6000 + 0x100])
+                # Use mapper's PRG-RAM access
+                page_data = []
+                for i in range(0x100):
+                    page_data.append(self.mapper.read_prg(addr + i))
+                return bytes(page_data)
             return None
         else:
-            # Unexpected DMA request
+            # PRG-ROM - cannot DMA
             return None

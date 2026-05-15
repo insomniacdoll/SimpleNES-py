@@ -119,10 +119,8 @@ class Emulator:
     
     def _update_mirroring(self):
         """Callback to update nametable mirroring"""
-        # In a complete implementation, this would update the PictureBus
-        # with the current mirroring configuration
-        mirroring_type = self.mapper.get_name_table_mirroring() if self.mapper else 0
-        self.picture_bus.mirroring_type = mirroring_type
+        if self.picture_bus:
+            self.picture_bus.update_mirroring()
     
     def _setup_io_callbacks(self):
         """Set up callbacks for I/O register access"""
@@ -220,19 +218,21 @@ class Emulator:
         self.mapper = Mapper.create_mapper(
             self.cartridge.get_mapper(),
             self.cartridge,
-            self._irq_interrupt,  # interrupt callback for IRQ
-            self._nmi_interrupt,  # NMI callback
-            self._update_mirroring  # mirroring callback
+            irq_cb=self._irq_interrupt,
+            mirroring_cb=self._update_mirroring
         )
         
         if self.mapper is None:
             error(f"Failed to create mapper for ROM: {rom_path}")
             return False
         
-        # Set the mapper in the bus and picture bus
+        # Set the mapper in the bus
         self.bus.set_mapper(self.mapper)
-        # Update the picture bus to refer to mapper for CHR access
-        self.picture_bus.mapper = self.mapper
+        
+        # Set the mapper in picture bus (triggers update_mirroring)
+        if not self.picture_bus.set_mapper(self.mapper):
+            error("Failed to set mapper for PictureBus")
+            return False
         
         # Reset CPU to start execution
         self.cpu.reset(skip_vblank_wait=False)

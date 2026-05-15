@@ -18,6 +18,9 @@ class Cartridge:
     def __init__(self):
         self.prg_rom = []  # Program ROM
         self.chr_rom = []  # Character ROM
+        # PRG-RAM: Initialize to 8KB to avoid empty list access risk
+        # Even in unit tests or manual Cartridge() construction, get_ext_ram() is safe
+        self.ext_ram = [0] * 0x2000  # 8KB PRG-RAM
         self.name_table_mirroring = NameTableMirroring.Horizontal
         self.mapper_number = 0
         self.extended_ram = False
@@ -73,6 +76,9 @@ class Cartridge:
             # Check for CHR RAM (if no CHR ROM)
             self.chr_ram = (chr_rom_size == 0)
             
+            # Reset PRG-RAM to clean state (8KB)
+            self.ext_ram = [0] * 0x2000
+            
             # Extract ROM data
             header_size = 16
             trainer_size = 512 if (flags_6 & 0x04) else 0
@@ -109,6 +115,14 @@ class Cartridge:
     def get_vrom(self) -> List[int]:
         """Get CHR ROM data"""
         return self.chr_rom
+    
+    def get_ext_ram(self) -> List[int]:
+        """Get PRG-RAM buffer (always available after construction)"""
+        return self.ext_ram
+    
+    def has_chr_ram(self) -> bool:
+        """Check if cartridge uses CHR-RAM instead of CHR-ROM"""
+        return self.chr_ram
     
     def get_mapper(self) -> int:
         """Get mapper number"""
